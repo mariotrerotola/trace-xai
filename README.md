@@ -349,7 +349,7 @@ datasets, measuring execution time, fidelity, and feature overlap (Jaccard).
 ## Development
 
 ```bash
-git clone https://github.com/your-username/trace-xai.git
+git clone https://github.com/mariotrerotola/trace-xai.git
 cd trace-xai
 pip install -e ".[dev]"
 pytest tests/ -v
@@ -362,11 +362,11 @@ pytest tests/ -v
 If you use TRACE in your research, please cite:
 
 ```bibtex
-@software{trace2025,
+@software{trace2026,
   title   = {{TRACE}: Tree-based Rule Approximation for Comprehensible Explanations},
   author  = {Trerotola, Mario},
-  year    = {2025},
-  url     = {https://github.com/your-username/trace-xai},
+  year    = {2026},
+  url     = {https://github.com/mariotrerotola/trace-xai},
   note    = {Python package version 0.1.0},
 }
 ```
