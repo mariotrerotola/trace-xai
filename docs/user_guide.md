@@ -14,11 +14,14 @@ This guide covers every feature of TRACE in depth, with executable examples.
 6. [Bootstrap Stability](#6-bootstrap-stability)
 7. [Confidence Intervals](#7-confidence-intervals)
 8. [Normalised Complexity Metrics](#8-normalised-complexity-metrics)
-9. [Visualization](#9-visualization)
-10. [Interactive HTML Export](#10-interactive-html-export)
-11. [Working with Rules Programmatically](#11-working-with-rules-programmatically)
-12. [Surrogate Backends](#12-surrogate-backends)
-13. [Benchmarking Against LIME and SHAP](#13-benchmarking-against-lime-and-shap)
+9. [Regulatory Pruning](#9-regulatory-pruning)
+10. [Monotonicity Constraints](#10-monotonicity-constraints)
+11. [Ensemble Rule Extraction](#11-ensemble-rule-extraction)
+12. [Visualization](#12-visualization)
+13. [Interactive HTML Export](#13-interactive-html-export)
+14. [Working with Rules Programmatically](#14-working-with-rules-programmatically)
+15. [Surrogate Backends](#15-surrogate-backends)
+16. [Benchmarking Against LIME and SHAP](#16-benchmarking-against-lime-and-shap)
 
 ---
 
@@ -279,7 +282,175 @@ print(result.rules.interaction_strength)
 
 ---
 
-## 9. Visualization
+## 9. Regulatory Pruning
+
+For regulatory contexts (GDPR, EU AI Act, financial regulators), rules with
+many conditions are hard to justify. TRACE provides configurable post-hoc
+pruning:
+
+### Inline pruning (during extraction)
+
+```python
+from trace_xai import Explainer, PruningConfig
+
+result = explainer.extract_rules(
+    X, y=y,
+    max_depth=5,
+    ccp_alpha=0.01,  # sklearn cost-complexity pruning
+    pruning=PruningConfig(
+        min_confidence=0.6,       # remove uncertain rules
+        min_samples=20,           # remove rare rules
+        max_conditions=4,         # truncate long rules
+        remove_redundant=True,    # simplify A>5 AND A>3 → A>5
+    ),
+)
+
+# Original rules are always preserved
+print(f"Original: {result.rules.num_rules} rules")
+print(f"Pruned:   {result.pruned_rules.num_rules} rules")
+
+# Detailed pruning report
+print(result.pruning_report)
+```
+
+### Post-hoc pruning (after extraction)
+
+```python
+result = explainer.extract_rules(X, y=y)
+pruned_result = explainer.prune_rules(
+    result,
+    PruningConfig(min_confidence=0.7, max_conditions=3),
+)
+```
+
+### PruningConfig parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `min_confidence` | `0.0` | Remove rules below this confidence. |
+| `min_samples` | `0` | Remove rules covering fewer samples. |
+| `min_samples_fraction` | `0.0` | Remove rules covering less than this fraction. Requires `total_samples`. |
+| `max_conditions` | `None` | Truncate rules to at most this many conditions. |
+| `remove_redundant` | `False` | Simplify redundant conditions on the same feature. |
+| `total_samples` | `None` | Total dataset size (needed for `min_samples_fraction`). |
+
+---
+
+## 10. Monotonicity Constraints
+
+Financial regulations require that certain features have a univocal effect
+(e.g. higher income should not increase credit risk). TRACE enforces this
+both during surrogate fitting and via post-hoc validation:
+
+```python
+result = explainer.extract_rules(
+    X, y=y,
+    monotonic_constraints={
+        "income": 1,       # increasing income → lower risk
+        "debt_ratio": -1,  # increasing debt → higher risk
+        "age": 0,          # no constraint
+    },
+)
+
+# Check compliance
+print(result.monotonicity_report)
+# === Monotonicity Report ===
+#   Compliant: True
+#   Violations: 0
+```
+
+### Post-hoc validation and filtering
+
+```python
+from trace_xai import validate_monotonicity, filter_monotonic_violations
+
+report = validate_monotonicity(result.rules, {"income": 1, "debt_ratio": -1})
+if not report.is_compliant:
+    for v in report.violations:
+        print(f"  Rule {v.rule_index}: {v.description}")
+    # Remove violating rules
+    clean_rules = filter_monotonic_violations(result.rules, report)
+```
+
+### Constraint values
+
+| Value | Meaning |
+|-------|---------|
+| `+1` | Prediction must increase (or stay same) as feature increases. |
+| `-1` | Prediction must decrease (or stay same) as feature increases. |
+| `0` | No constraint. |
+
+> **Note:** The `monotonic_cst` sklearn parameter requires scikit-learn >= 1.3.
+> TRACE checks at runtime and raises a clear error if not available.
+
+---
+
+## 11. Ensemble Rule Extraction
+
+A single surrogate tree can produce different rules with slight data changes.
+For auditable processes, use ensemble extraction to find **stable rules**
+that appear consistently across multiple bootstrap surrogates:
+
+```python
+result = explainer.extract_stable_rules(
+    X, y=y,
+    n_estimators=30,           # number of bootstrap surrogates
+    frequency_threshold=0.5,   # rule must appear in >= 50% of trees
+    tolerance=0.1,             # fuzzy threshold matching
+    max_depth=5,
+)
+
+# Ensemble report
+print(result.ensemble_report)
+# === Ensemble Report (30 surrogates) ===
+#   Stable rules: 8
+#   Total unique rules: 45
+#   Mean rules per tree: 12.3
+
+# Access stable rules with frequency information
+for sr in result.stable_rules:
+    print(f"  [{sr.frequency:.0%}] {sr.rule}")
+```
+
+### Fuzzy stability analysis
+
+The existing `compute_stability()` can also use fuzzy matching for more
+realistic Jaccard scores:
+
+```python
+# Exact matching (original behavior)
+exact = explainer.compute_stability(X, n_bootstraps=20)
+
+# Fuzzy matching (near-identical thresholds are considered the same rule)
+fuzzy = explainer.compute_stability(X, n_bootstraps=20, tolerance=0.1)
+print(f"Exact Jaccard: {exact.mean_jaccard:.4f}")
+print(f"Fuzzy Jaccard: {fuzzy.mean_jaccard:.4f}")  # typically higher
+```
+
+### Combining all three features
+
+```python
+# 1. Extract stable rules with monotonicity
+result = explainer.extract_stable_rules(
+    X, y=y,
+    n_estimators=20,
+    frequency_threshold=0.5,
+    monotonic_constraints={"income": 1, "debt_ratio": -1},
+)
+
+# 2. Prune the stable rules
+pruned = explainer.prune_rules(
+    result,
+    PruningConfig(min_confidence=0.7, max_conditions=4, remove_redundant=True),
+)
+
+# 3. Export for audit
+pruned.to_html("audit_report.html")
+```
+
+---
+
+## 12. Visualization
 
 ### matplotlib tree plot
 
@@ -312,7 +483,7 @@ graph.render("tree", format="pdf")
 
 ---
 
-## 10. Interactive HTML Export
+## 13. Interactive HTML Export
 
 Generate a self-contained HTML file with no external dependencies:
 
@@ -333,7 +504,7 @@ embedded in reports, or opened in any browser.
 
 ---
 
-## 11. Working with Rules Programmatically
+## 14. Working with Rules Programmatically
 
 ### Filtering rules
 
@@ -372,7 +543,7 @@ with open("rules.txt", "w") as f:
 
 ---
 
-## 12. Surrogate Backends
+## 15. Surrogate Backends
 
 TRACE uses a pluggable surrogate architecture defined by the `BaseSurrogate`
 protocol in `trace_xai.surrogates.base`:
@@ -406,7 +577,7 @@ class MySurrogate:
 
 ---
 
-## 13. Benchmarking Against LIME and SHAP
+## 16. Benchmarking Against LIME and SHAP
 
 TRACE includes a ready-to-run benchmark script:
 

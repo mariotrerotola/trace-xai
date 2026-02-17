@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Explainer Report</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+         background: #f5f5f5; color: #333; padding: 2rem; }
+  h1 { margin-bottom: 1rem; }
+  .report { background: #fff; padding: 1rem; border-radius: 6px;
+             margin-bottom: 1.5rem; white-space: pre-wrap;
+             font-family: monospace; font-size: 0.85rem;
+             box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .controls { margin-bottom: 1rem; display: flex; flex-wrap: wrap; gap: 0.5rem;
+               align-items: center; }
+  .filter-btn { padding: 0.3rem 0.8rem; border: 1px solid #ccc; border-radius: 4px;
+                 background: #fff; cursor: pointer; font-size: 0.85rem; }
+  .filter-btn.active { background: #4a90d9; color: #fff; border-color: #4a90d9; }
+  input[type=text] { padding: 0.3rem 0.6rem; border: 1px solid #ccc;
+                      border-radius: 4px; font-size: 0.85rem; width: 250px; }
+  table { width: 100%; border-collapse: collapse; background: #fff;
+           box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-radius: 6px;
+           overflow: hidden; }
+  th, td { text-align: left; padding: 0.5rem 0.8rem; border-bottom: 1px solid #eee; }
+  th { background: #4a90d9; color: #fff; cursor: pointer; user-select: none; }
+  th:hover { background: #3a7bc8; }
+  tr.hidden { display: none; }
+  .conditions { font-family: monospace; font-size: 0.82rem; }
+</style>
+</head>
+<body>
+<h1>Explainer General &mdash; Report</h1>
+<div class="report">=== Fidelity Report ===
+  Evaluation type: hold_out
+  Fidelity (surrogate vs black-box): 0.7940
+  Surrogate accuracy (vs true labels): 0.7420
+  Black-box accuracy (vs true labels): 0.7600
+  Number of rules: 16
+  Avg rule length: 4.00
+  Max rule length: 4
+  Surrogate depth: 4
+  Surrogate leaves: 16
+  Samples used: 1000
+  Avg conditions/feature: 0.5000
+  Interaction strength: 1.0000
+  Per-class fidelity:
+    Low_Risk: 0.9219
+    Medium_Risk: 0.5746
+    High_Risk: 0.9077</div>
+
+<h2>Rules</h2>
+<div class="controls">
+  <button class="filter-btn active" data-class="all">All</button>
+<button class="filter-btn" data-class="High_Risk">High_Risk</button>
+<button class="filter-btn" data-class="Low_Risk">Low_Risk</button>
+<button class="filter-btn" data-class="Medium_Risk">Medium_Risk</button>
+
+  <input type="text" id="search" placeholder="Search features...">
+</div>
+<table id="rules-table">
+  <thead>
+    <tr>
+      <th data-sort="num">#</th>
+      <th>Conditions</th>
+      <th>Prediction</th>
+      <th data-sort="num">Confidence</th>
+      <th data-sort="num">Samples</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr data-class="Medium_Risk"><td>1</td><td class="conditions">Missed_Payments &lt;= 0.5000 AND Credit_Score &lt;= 600.0828 AND Debt_to_Income &lt;= 0.4125 AND Income &lt;= 39929.4102</td><td class="prediction">Medium_Risk</td><td>66.23%</td><td>1</td></tr>
+<tr data-class="Medium_Risk"><td>2</td><td class="conditions">Missed_Payments &lt;= 0.5000 AND Credit_Score &lt;= 600.0828 AND Debt_to_Income &lt;= 0.4125 AND Income &gt; 39929.4102</td><td class="prediction">Medium_Risk</td><td>60.87%</td><td>1</td></tr>
+<tr data-class="High_Risk"><td>3</td><td class="conditions">Missed_Payments &lt;= 0.5000 AND Credit_Score &lt;= 600.0828 AND Debt_to_Income &gt; 0.4125 AND Income &lt;= 40238.6875</td><td class="prediction">High_Risk</td><td>96.49%</td><td>1</td></tr>
+<tr data-class="High_Risk"><td>4</td><td class="conditions">Missed_Payments &lt;= 0.5000 AND Credit_Score &lt;= 600.0828 AND Debt_to_Income &gt; 0.4125 AND Income &gt; 40238.6875</td><td class="prediction">High_Risk</td><td>49.69%</td><td>1</td></tr>
+<tr data-class="Low_Risk"><td>5</td><td class="conditions">Missed_Payments &lt;= 0.5000 AND Credit_Score &gt; 600.0828 AND Debt_to_Income &lt;= 0.4010 AND Income &lt;= 39747.0234</td><td class="prediction">Low_Risk</td><td>75.00%</td><td>1</td></tr>
+<tr data-class="Low_Risk"><td>6</td><td class="conditions">Missed_Payments &lt;= 0.5000 AND Credit_Score &gt; 600.0828 AND Debt_to_Income &lt;= 0.4010 AND Income &gt; 39747.0234</td><td class="prediction">Low_Risk</td><td>98.64%</td><td>1</td></tr>
+<tr data-class="Medium_Risk"><td>7</td><td class="conditions">Missed_Payments &lt;= 0.5000 AND Credit_Score &gt; 600.0828 AND Debt_to_Income &gt; 0.4010 AND Income &lt;= 40091.1973</td><td class="prediction">Medium_Risk</td><td>68.75%</td><td>1</td></tr>
+<tr data-class="Low_Risk"><td>8</td><td class="conditions">Missed_Payments &lt;= 0.5000 AND Credit_Score &gt; 600.0828 AND Debt_to_Income &gt; 0.4010 AND Income &gt; 40091.1973</td><td class="prediction">Low_Risk</td><td>64.38%</td><td>1</td></tr>
+<tr data-class="High_Risk"><td>9</td><td class="conditions">Missed_Payments &gt; 0.5000 AND Credit_Score &lt;= 603.5818 AND Debt_to_Income &lt;= 0.3160 AND Income &lt;= 51281.9590</td><td class="prediction">High_Risk</td><td>96.83%</td><td>1</td></tr>
+<tr data-class="High_Risk"><td>10</td><td class="conditions">Missed_Payments &gt; 0.5000 AND Credit_Score &lt;= 603.5818 AND Debt_to_Income &lt;= 0.3160 AND Income &gt; 51281.9590</td><td class="prediction">High_Risk</td><td>74.42%</td><td>1</td></tr>
+<tr data-class="High_Risk"><td>11</td><td class="conditions">Missed_Payments &gt; 0.5000 AND Credit_Score &lt;= 603.5818 AND Debt_to_Income &gt; 0.3160 AND Years_Employed &lt;= 15.9961</td><td class="prediction">High_Risk</td><td>100.00%</td><td>1</td></tr>
+<tr data-class="High_Risk"><td>12</td><td class="conditions">Missed_Payments &gt; 0.5000 AND Credit_Score &lt;= 603.5818 AND Debt_to_Income &gt; 0.3160 AND Years_Employed &gt; 15.9961</td><td class="prediction">High_Risk</td><td>95.00%</td><td>1</td></tr>
+<tr data-class="Medium_Risk"><td>13</td><td class="conditions">Missed_Payments &gt; 0.5000 AND Credit_Score &gt; 603.5818 AND Debt_to_Income &lt;= 0.3991 AND Credit_Score &lt;= 749.0932</td><td class="prediction">Medium_Risk</td><td>68.39%</td><td>1</td></tr>
+<tr data-class="Low_Risk"><td>14</td><td class="conditions">Missed_Payments &gt; 0.5000 AND Credit_Score &gt; 603.5818 AND Debt_to_Income &lt;= 0.3991 AND Credit_Score &gt; 749.0932</td><td class="prediction">Low_Risk</td><td>52.88%</td><td>1</td></tr>
+<tr data-class="High_Risk"><td>15</td><td class="conditions">Missed_Payments &gt; 0.5000 AND Credit_Score &gt; 603.5818 AND Debt_to_Income &gt; 0.3991 AND Credit_Score &lt;= 751.7180</td><td class="prediction">High_Risk</td><td>82.90%</td><td>1</td></tr>
+<tr data-class="Medium_Risk"><td>16</td><td class="conditions">Missed_Payments &gt; 0.5000 AND Credit_Score &gt; 603.5818 AND Debt_to_Income &gt; 0.3991 AND Credit_Score &gt; 751.7180</td><td class="prediction">Medium_Risk</td><td>66.04%</td><td>1</td></tr>
+  </tbody>
+</table>
+
+<script>
+(function() {
+  const table = document.getElementById('rules-table');
+  const tbody = table.querySelector('tbody');
+  const rows = () => Array.from(tbody.querySelectorAll('tr'));
+  let activeClass = 'all';
+
+  // Filter buttons
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelector('.filter-btn.active').classList.remove('active');
+      btn.classList.add('active');
+      activeClass = btn.dataset.class;
+      applyFilters();
+    });
+  });
+
+  // Search
+  const searchInput = document.getElementById('search');
+  searchInput.addEventListener('input', applyFilters);
+
+  function applyFilters() {
+    const q = searchInput.value.toLowerCase();
+    rows().forEach(row => {
+      const matchClass = activeClass === 'all' || row.dataset.class === activeClass;
+      const matchSearch = !q || row.textContent.toLowerCase().includes(q);
+      row.classList.toggle('hidden', !(matchClass && matchSearch));
+    });
+  }
+
+  // Sortable headers
+  table.querySelectorAll('th').forEach((th, idx) => {
+    th.addEventListener('click', () => {
+      const isNum = th.dataset.sort === 'num';
+      const sorted = rows().sort((a, b) => {
+        let va = a.children[idx].textContent.replace('%','');
+        let vb = b.children[idx].textContent.replace('%','');
+        if (isNum) return (parseFloat(vb) || 0) - (parseFloat(va) || 0);
+        return va.localeCompare(vb);
+      });
+      sorted.forEach(r => tbody.appendChild(r));
+    });
+  });
+})();
+</script>
+</body>
+</html>

@@ -221,9 +221,83 @@ interactions.
 
 ---
 
-## 6. Theoretical Considerations
+## 6. Regulatory Compliance Features
 
-### 6.1 Fidelity–Interpretability Trade-off
+### 6.1 Post-Hoc Rule Pruning
+
+Deep surrogates produce rules with many conditions that are difficult to
+justify to auditors. TRACE provides configurable post-hoc pruning:
+
+**Confidence filtering:** Rules with confidence below a threshold (e.g. 0.6)
+are removed. Low-confidence rules indicate leaves where the surrogate is
+uncertain and provide weak explanatory value.
+
+**Sample coverage filtering:** Rules covering fewer than *k* samples (or less
+than a fraction of the dataset) are removed. Rare rules are statistically
+unreliable and prone to overfitting.
+
+**Redundant condition simplification:** For conditions on the same feature,
+redundant splits are collapsed:
+- `A > 5 AND A > 3` → `A > 5` (keep tightest lower bound)
+- `A ≤ 10 AND A ≤ 7` → `A ≤ 7` (keep tightest upper bound)
+
+**Condition truncation:** Rules with more than *N* conditions (typically 3–4
+for regulatory contexts) are truncated to the first *N* conditions. Conditions
+closer to the tree root are more discriminative and kept preferentially.
+
+**Cost-complexity pruning:** The `ccp_alpha` parameter is passed directly to
+sklearn's decision tree, which performs minimal cost-complexity pruning during
+fitting (Breiman et al., 1984). This is complementary to the post-hoc filters.
+
+### 6.2 Monotonicity Constraints
+
+Financial regulations often require that certain inputs have a univocal effect
+on the output. For example, increasing income should not increase credit risk.
+
+TRACE supports two layers of monotonicity enforcement:
+
+**During fitting:** When `monotonic_constraints` is provided, the `monotonic_cst`
+parameter is passed to sklearn's `DecisionTreeClassifier`/`DecisionTreeRegressor`,
+which enforces the constraints during tree construction. This guarantees that
+splits on constrained features respect the declared direction.
+
+**Post-hoc validation:** After rule extraction, `validate_monotonicity()` checks
+all rule pairs for violations. For regression, it verifies that prediction
+values are monotonically ordered with respect to constrained features. For
+classification, it flags cases where the predicted class changes inconsistently
+as a constrained feature increases. A `MonotonicityReport` with any detected
+violations is attached to the result.
+
+### 6.3 Ensemble Rule Extraction (Bagging)
+
+A single surrogate tree is sensitive to the training data: small perturbations
+can produce different rules. For regulatory audits, rule stability is
+essential — re-running the process tomorrow should not produce drastically
+different rules.
+
+TRACE addresses this via ensemble rule extraction:
+
+1. Generate *N* bootstrap samples of the explanation data.
+2. Train a separate surrogate tree on each sample.
+3. Extract rules from each tree and compute **fuzzy signatures** (thresholds
+   rounded to a configurable tolerance) so that near-identical rules are
+   recognized as the same rule.
+4. Count how many trees each rule appears in.
+5. Retain only rules appearing in at least a specified fraction (e.g. 50%)
+   of the trees.
+
+The fuzzy matching addresses a limitation of the existing Jaccard stability
+metric, where threshold differences of 0.0001 caused rules to be treated as
+entirely different.
+
+The `EnsembleReport` provides statistics on the extraction process, including
+the number of unique rules, stable rule count, and mean rules per tree.
+
+---
+
+## 7. Theoretical Considerations
+
+### 7.1 Fidelity–Interpretability Trade-off
 
 Increasing `max_depth` improves fidelity at the cost of more rules. In the
 limit (`max_depth = None`), the surrogate perfectly memorises the black-box on
@@ -233,7 +307,7 @@ Practitioners should select the shallowest tree that achieves acceptable
 fidelity. The cross-validated fidelity and stability analyses help determine
 this threshold.
 
-### 6.2 Limitations
+### 7.2 Limitations
 
 - **Global approximation**: the surrogate is a single global model. It may miss
   local decision patterns that are important for specific instances. For local
@@ -254,7 +328,7 @@ this threshold.
 
 ---
 
-## 7. References
+## 8. References
 
 1. Craven, M. W., & Shavlik, J. W. (1996). *Extracting tree-structured
    representations of trained networks*. Advances in Neural Information

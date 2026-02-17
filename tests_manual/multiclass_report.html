@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Explainer Report</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+         background: #f5f5f5; color: #333; padding: 2rem; }
+  h1 { margin-bottom: 1rem; }
+  .report { background: #fff; padding: 1rem; border-radius: 6px;
+             margin-bottom: 1.5rem; white-space: pre-wrap;
+             font-family: monospace; font-size: 0.85rem;
+             box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .controls { margin-bottom: 1rem; display: flex; flex-wrap: wrap; gap: 0.5rem;
+               align-items: center; }
+  .filter-btn { padding: 0.3rem 0.8rem; border: 1px solid #ccc; border-radius: 4px;
+                 background: #fff; cursor: pointer; font-size: 0.85rem; }
+  .filter-btn.active { background: #4a90d9; color: #fff; border-color: #4a90d9; }
+  input[type=text] { padding: 0.3rem 0.6rem; border: 1px solid #ccc;
+                      border-radius: 4px; font-size: 0.85rem; width: 250px; }
+  table { width: 100%; border-collapse: collapse; background: #fff;
+           box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-radius: 6px;
+           overflow: hidden; }
+  th, td { text-align: left; padding: 0.5rem 0.8rem; border-bottom: 1px solid #eee; }
+  th { background: #4a90d9; color: #fff; cursor: pointer; user-select: none; }
+  th:hover { background: #3a7bc8; }
+  tr.hidden { display: none; }
+  .conditions { font-family: monospace; font-size: 0.82rem; }
+</style>
+</head>
+<body>
+<h1>Explainer General &mdash; Report</h1>
+<div class="report">=== Fidelity Report ===
+  Evaluation type: hold_out
+  Fidelity (surrogate vs black-box): 1.0000
+  Surrogate accuracy (vs true labels): 1.0000
+  Black-box accuracy (vs true labels): 1.0000
+  Number of rules: 6
+  Avg rule length: 3.00
+  Max rule length: 4
+  Surrogate depth: 4
+  Surrogate leaves: 6
+  Samples used: 30
+  Avg conditions/feature: 0.7500
+  Interaction strength: 0.8333
+  Per-class fidelity:
+    setosa: 1.0000
+    versicolor: 1.0000
+    virginica: 1.0000</div>
+
+<h2>Rules</h2>
+<div class="controls">
+  <button class="filter-btn active" data-class="all">All</button>
+<button class="filter-btn" data-class="setosa">setosa</button>
+<button class="filter-btn" data-class="versicolor">versicolor</button>
+<button class="filter-btn" data-class="virginica">virginica</button>
+
+  <input type="text" id="search" placeholder="Search features...">
+</div>
+<table id="rules-table">
+  <thead>
+    <tr>
+      <th data-sort="num">#</th>
+      <th>Conditions</th>
+      <th>Prediction</th>
+      <th data-sort="num">Confidence</th>
+      <th data-sort="num">Samples</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr data-class="setosa"><td>1</td><td class="conditions">petal length (cm) &lt;= 2.4500</td><td class="prediction">setosa</td><td>100.00%</td><td>1</td></tr>
+<tr data-class="versicolor"><td>2</td><td class="conditions">petal length (cm) &gt; 2.4500 AND petal length (cm) &lt;= 4.7500 AND sepal length (cm) &lt;= 5.1500</td><td class="prediction">versicolor</td><td>80.00%</td><td>1</td></tr>
+<tr data-class="versicolor"><td>3</td><td class="conditions">petal length (cm) &gt; 2.4500 AND petal length (cm) &lt;= 4.7500 AND sepal length (cm) &gt; 5.1500</td><td class="prediction">versicolor</td><td>100.00%</td><td>1</td></tr>
+<tr data-class="versicolor"><td>4</td><td class="conditions">petal length (cm) &gt; 2.4500 AND petal length (cm) &gt; 4.7500 AND petal width (cm) &lt;= 1.7500</td><td class="prediction">versicolor</td><td>50.00%</td><td>1</td></tr>
+<tr data-class="virginica"><td>5</td><td class="conditions">petal length (cm) &gt; 2.4500 AND petal length (cm) &gt; 4.7500 AND petal width (cm) &gt; 1.7500 AND petal length (cm) &lt;= 4.9500</td><td class="prediction">virginica</td><td>80.00%</td><td>1</td></tr>
+<tr data-class="virginica"><td>6</td><td class="conditions">petal length (cm) &gt; 2.4500 AND petal length (cm) &gt; 4.7500 AND petal width (cm) &gt; 1.7500 AND petal length (cm) &gt; 4.9500</td><td class="prediction">virginica</td><td>100.00%</td><td>1</td></tr>
+  </tbody>
+</table>
+
+<script>
+(function() {
+  const table = document.getElementById('rules-table');
+  const tbody = table.querySelector('tbody');
+  const rows = () => Array.from(tbody.querySelectorAll('tr'));
+  let activeClass = 'all';
+
+  // Filter buttons
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelector('.filter-btn.active').classList.remove('active');
+      btn.classList.add('active');
+      activeClass = btn.dataset.class;
+      applyFilters();
+    });
+  });
+
+  // Search
+  const searchInput = document.getElementById('search');
+  searchInput.addEventListener('input', applyFilters);
+
+  function applyFilters() {
+    const q = searchInput.value.toLowerCase();
+    rows().forEach(row => {
+      const matchClass = activeClass === 'all' || row.dataset.class === activeClass;
+      const matchSearch = !q || row.textContent.toLowerCase().includes(q);
+      row.classList.toggle('hidden', !(matchClass && matchSearch));
+    });
+  }
+
+  // Sortable headers
+  table.querySelectorAll('th').forEach((th, idx) => {
+    th.addEventListener('click', () => {
+      const isNum = th.dataset.sort === 'num';
+      const sorted = rows().sort((a, b) => {
+        let va = a.children[idx].textContent.replace('%','');
+        let vb = b.children[idx].textContent.replace('%','');
+        if (isNum) return (parseFloat(vb) || 0) - (parseFloat(va) || 0);
+        return va.localeCompare(vb);
+      });
+      sorted.forEach(r => tbody.appendChild(r));
+    });
+  });
+})();
+</script>
+</body>
+</html>

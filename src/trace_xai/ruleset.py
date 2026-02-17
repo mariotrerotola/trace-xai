@@ -122,6 +122,16 @@ class RuleSet:
             sigs.append(sig)
         return frozenset(sigs)
 
+    def fuzzy_rule_signatures(self, tolerance: float = 0.01) -> frozenset:
+        """Canonical rule signatures with thresholds rounded to *tolerance*.
+
+        Near-identical thresholds (e.g. 0.7999 vs 0.8001) produce the same
+        signature, giving more realistic Jaccard stability scores.
+        """
+        from .ensemble import fuzzy_signature
+
+        return frozenset(fuzzy_signature(rule, tolerance) for rule in self.rules)
+
     def filter_by_class(self, class_name: str) -> RuleSet:
         """Return a new RuleSet containing only rules for *class_name*."""
         filtered = tuple(r for r in self.rules if r.prediction == class_name)

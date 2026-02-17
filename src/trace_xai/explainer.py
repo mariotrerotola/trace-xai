@@ -48,6 +48,11 @@ class ExplanationResult:
         *,
         train_report: Optional[FidelityReport] = None,
         task: str = "classification",
+        pruned_rules: Optional[RuleSet] = None,
+        pruning_report=None,
+        monotonicity_report=None,
+        ensemble_report=None,
+        stable_rules=None,
     ) -> None:
         self.rules = rules
         self.report = report
@@ -56,6 +61,11 @@ class ExplanationResult:
         self._class_names = class_names or ()
         self.train_report = train_report
         self._task = task
+        self.pruned_rules = pruned_rules
+        self.pruning_report = pruning_report
+        self.monotonicity_report = monotonicity_report
+        self.ensemble_report = ensemble_report
+        self.stable_rules = stable_rules
 
     # ------------------------------------------------------------------
     # Convenience methods
@@ -85,6 +95,17 @@ class ExplanationResult:
         parts = [str(self.rules), "", str(self.report)]
         if self.train_report is not None:
             parts += ["", "--- Train (in-sample) report ---", str(self.train_report)]
+        if self.pruning_report is not None:
+            parts += ["", f"--- Pruning Report ---",
+                       f"  Original rules: {self.pruning_report.original_count}",
+                       f"  Pruned rules: {self.pruning_report.pruned_count}",
+                       f"  Removed (low confidence): {self.pruning_report.removed_low_confidence}",
+                       f"  Removed (low samples): {self.pruning_report.removed_low_samples}",
+                       f"  Conditions simplified: {self.pruning_report.conditions_simplified}"]
+        if self.monotonicity_report is not None:
+            parts += ["", str(self.monotonicity_report)]
+        if self.ensemble_report is not None:
+            parts += ["", str(self.ensemble_report)]
         return "\n".join(parts)
 
 
@@ -150,6 +171,9 @@ class Explainer:
         y: Optional[ArrayLike] = None,
         max_depth: int = 5,
         min_samples_leaf: int = 5,
+        ccp_alpha: float = 0.0,
+        monotonic_constraints: Optional[Dict[str, int]] = None,
+        pruning=None,
         X_val: Optional[ArrayLike] = None,
         y_val: Optional[ArrayLike] = None,
         validation_split: Optional[float] = None,
@@ -167,6 +191,13 @@ class Explainer:
             Maximum depth of the surrogate tree.
         min_samples_leaf : int, default 5
             Minimum samples per leaf in the surrogate tree.
+        ccp_alpha : float, default 0.0
+            Cost-complexity pruning parameter for the sklearn tree.
+        monotonic_constraints : dict mapping feature name to {+1, -1, 0}, optional
+            Enforce monotonic relationships during surrogate fitting.
+            Requires scikit-learn >= 1.4.
+        pruning : PruningConfig, optional
+            Post-hoc rule pruning configuration.
         X_val : array-like, optional
             Separate validation set for hold-out fidelity evaluation.
         y_val : array-like, optional
@@ -224,18 +255,23 @@ class Explainer:
 
         # 2. Train surrogate
         is_regression = self._task == "regression"
-        if is_regression:
-            surrogate = DecisionTreeRegressor(
-                max_depth=max_depth,
-                min_samples_leaf=min_samples_leaf,
-                random_state=42,
-            )
-        else:
-            surrogate = DecisionTreeClassifier(
-                max_depth=max_depth,
-                min_samples_leaf=min_samples_leaf,
-                random_state=42,
-            )
+        monotonic_cst = None
+        if monotonic_constraints is not None:
+            from .monotonicity import check_sklearn_monotonic_support, constraints_to_array
+            if not check_sklearn_monotonic_support():
+                raise RuntimeError(
+                    "Monotonic constraints require scikit-learn >= 1.4. "
+                    "Please upgrade: pip install 'scikit-learn>=1.4'"
+                )
+            monotonic_cst = constraints_to_array(monotonic_constraints, self.feature_names)
+
+        surrogate = self._build_surrogate(
+            is_regression,
+            max_depth=max_depth,
+            min_samples_leaf=min_samples_leaf,
+            ccp_alpha=ccp_alpha,
+            monotonic_cst=monotonic_cst,
+        )
         surrogate.fit(X_train, y_bb)
 
         # 3. Extract rules via DFS
@@ -245,6 +281,19 @@ class Explainer:
             feature_names=self.feature_names,
             class_names=self.class_names or (),
         )
+
+        # 3b. Monotonicity validation
+        mono_report = None
+        if monotonic_constraints is not None:
+            from .monotonicity import validate_monotonicity
+            mono_report = validate_monotonicity(ruleset, monotonic_constraints)
+
+        # 3c. Post-hoc pruning
+        pruned_rules = None
+        pruning_report = None
+        if pruning is not None:
+            from .pruning import prune_ruleset
+            pruned_rules, pruning_report = prune_ruleset(ruleset, pruning)
 
         # Shared kwargs for report builders
         report_kwargs = dict(
@@ -280,6 +329,9 @@ class Explainer:
             class_names=self.class_names or (),
             train_report=train_report,
             task=self._task,
+            pruned_rules=pruned_rules,
+            pruning_report=pruning_report,
+            monotonicity_report=mono_report,
         )
 
     def cross_validate_fidelity(
@@ -317,18 +369,12 @@ class Explainer:
             y_bb_tr = np.asarray(self.model.predict(X_tr))
 
             is_regression = self._task == "regression"
-            if is_regression:
-                surr = DecisionTreeRegressor(
-                    max_depth=max_depth,
-                    min_samples_leaf=min_samples_leaf,
-                    random_state=random_state,
-                )
-            else:
-                surr = DecisionTreeClassifier(
-                    max_depth=max_depth,
-                    min_samples_leaf=min_samples_leaf,
-                    random_state=random_state,
-                )
+            surr = self._build_surrogate(
+                is_regression,
+                max_depth=max_depth,
+                min_samples_leaf=min_samples_leaf,
+                random_state=random_state,
+            )
             surr.fit(X_tr, y_bb_tr)
 
             rules = self._extract_rules_from_tree(surr, is_regression=is_regression)
@@ -368,8 +414,16 @@ class Explainer:
         max_depth: int = 5,
         min_samples_leaf: int = 5,
         random_state: int = 42,
+        tolerance: Optional[float] = None,
     ) -> StabilityReport:
-        """Compute rule stability via bootstrap resampling + Jaccard similarity."""
+        """Compute rule stability via bootstrap resampling + Jaccard similarity.
+
+        Parameters
+        ----------
+        tolerance : float, optional
+            If given, use fuzzy rule signatures (thresholds rounded to the
+            nearest multiple of *tolerance*) for more realistic Jaccard scores.
+        """
         X = np.asarray(X)
         rng = np.random.RandomState(random_state)
 
@@ -381,18 +435,12 @@ class Explainer:
             X_boot = X[idx]
             y_bb_boot = np.asarray(self.model.predict(X_boot))
 
-            if is_regression:
-                surr = DecisionTreeRegressor(
-                    max_depth=max_depth,
-                    min_samples_leaf=min_samples_leaf,
-                    random_state=random_state,
-                )
-            else:
-                surr = DecisionTreeClassifier(
-                    max_depth=max_depth,
-                    min_samples_leaf=min_samples_leaf,
-                    random_state=random_state,
-                )
+            surr = self._build_surrogate(
+                is_regression,
+                max_depth=max_depth,
+                min_samples_leaf=min_samples_leaf,
+                random_state=random_state,
+            )
             surr.fit(X_boot, y_bb_boot)
 
             rules = self._extract_rules_from_tree(surr, is_regression=is_regression)
@@ -401,7 +449,10 @@ class Explainer:
                 feature_names=self.feature_names,
                 class_names=self.class_names or (),
             )
-            signatures.append(ruleset.rule_signatures())
+            if tolerance is not None:
+                signatures.append(ruleset.fuzzy_rule_signatures(tolerance))
+            else:
+                signatures.append(ruleset.rule_signatures())
 
         # Pairwise Jaccard
         pairwise: list[float] = []
@@ -471,9 +522,190 @@ class Explainer:
             )
         return out
 
+    def prune_rules(
+        self,
+        result: ExplanationResult,
+        config,
+    ) -> ExplanationResult:
+        """Apply post-hoc pruning to an existing ExplanationResult.
+
+        Returns a new ExplanationResult with ``pruned_rules`` and
+        ``pruning_report`` populated.
+        """
+        from .pruning import prune_ruleset
+
+        pruned, report = prune_ruleset(result.rules, config)
+        return ExplanationResult(
+            rules=result.rules,
+            report=result.report,
+            surrogate=result.surrogate,
+            feature_names=result._feature_names,
+            class_names=result._class_names or (),
+            train_report=result.train_report,
+            task=result._task,
+            pruned_rules=pruned,
+            pruning_report=report,
+            monotonicity_report=result.monotonicity_report,
+            ensemble_report=result.ensemble_report,
+            stable_rules=result.stable_rules,
+        )
+
+    def extract_stable_rules(
+        self,
+        X: ArrayLike,
+        *,
+        y: Optional[ArrayLike] = None,
+        n_estimators: int = 20,
+        frequency_threshold: float = 0.5,
+        tolerance: float | dict[str, float] = 0.01,
+        max_depth: int = 5,
+        min_samples_leaf: int = 5,
+        ccp_alpha: float = 0.0,
+        monotonic_constraints: Optional[Dict[str, int]] = None,
+        random_state: int = 42,
+        X_val: Optional[ArrayLike] = None,
+        y_val: Optional[ArrayLike] = None,
+    ) -> ExplanationResult:
+        """Extract stable rules via ensemble of bootstrap surrogates.
+
+        Trains *n_estimators* surrogate trees on bootstrap samples, then
+        retains only rules appearing in at least *frequency_threshold*
+        fraction of trees.
+
+        Parameters
+        ----------
+        n_estimators : int
+            Number of bootstrap surrogate trees.
+        frequency_threshold : float
+            Minimum fraction of trees in which a rule must appear (0-1).
+        tolerance : float or dict
+            Threshold rounding tolerance for fuzzy matching.
+            Can be a single float (global) or a dict ``{feature: tol}``.
+        """
+        from .ensemble import extract_ensemble_rules
+
+        X = np.asarray(X)
+        y_true = np.asarray(y) if y is not None else None
+
+        # Black-box predictions
+        y_bb = np.asarray(self.model.predict(X))
+
+        is_regression = self._task == "regression"
+        monotonic_cst = None
+        if monotonic_constraints is not None:
+            from .monotonicity import check_sklearn_monotonic_support, constraints_to_array
+            if not check_sklearn_monotonic_support():
+                raise RuntimeError(
+                    "Monotonic constraints require scikit-learn >= 1.4."
+                )
+            monotonic_cst = constraints_to_array(monotonic_constraints, self.feature_names)
+
+        rng = np.random.RandomState(random_state)
+        bootstrap_rulesets: list[RuleSet] = []
+
+        for _ in range(n_estimators):
+            idx = rng.choice(len(X), size=len(X), replace=True)
+            X_boot = X[idx]
+            y_bb_boot = y_bb[idx]
+
+            surr = self._build_surrogate(
+                is_regression,
+                max_depth=max_depth,
+                min_samples_leaf=min_samples_leaf,
+                ccp_alpha=ccp_alpha,
+                monotonic_cst=monotonic_cst,
+                random_state=random_state,
+            )
+            surr.fit(X_boot, y_bb_boot)
+
+            rules = self._extract_rules_from_tree(surr, is_regression=is_regression)
+            bootstrap_rulesets.append(RuleSet(
+                rules=tuple(rules),
+                feature_names=self.feature_names,
+                class_names=self.class_names or (),
+            ))
+
+        stable_rules, ensemble_report = extract_ensemble_rules(
+            bootstrap_rulesets,
+            frequency_threshold=frequency_threshold,
+            tolerance=tolerance,
+        )
+
+        # Build a RuleSet from the stable rules for the result
+        stable_ruleset = RuleSet(
+            rules=tuple(sr.rule for sr in stable_rules),
+            feature_names=self.feature_names,
+            class_names=self.class_names or (),
+        )
+
+        # Build a report using one of the surrogates (the last one)
+        # on the full data for metrics
+        surr_final = self._build_surrogate(
+            is_regression,
+            max_depth=max_depth,
+            min_samples_leaf=min_samples_leaf,
+            ccp_alpha=ccp_alpha,
+            monotonic_cst=monotonic_cst,
+        )
+        surr_final.fit(X, y_bb)
+
+        report_kwargs = dict(
+            avg_conditions_per_feature=stable_ruleset.avg_conditions_per_feature,
+            interaction_strength=stable_ruleset.interaction_strength,
+        )
+
+        X_eval = np.asarray(X_val) if X_val is not None else None
+        y_eval_true = np.asarray(y_val) if y_val is not None else None
+
+        if X_eval is not None:
+            y_bb_eval = np.asarray(self.model.predict(X_eval))
+            report = self._build_report(
+                surr_final, X_eval, y_bb_eval, y_eval_true, stable_ruleset,
+                evaluation_type="hold_out", **report_kwargs,
+            )
+        else:
+            report = self._build_report(
+                surr_final, X, y_bb, y_true, stable_ruleset,
+                evaluation_type="in_sample", **report_kwargs,
+            )
+
+        return ExplanationResult(
+            rules=stable_ruleset,
+            report=report,
+            surrogate=surr_final,
+            feature_names=self.feature_names,
+            class_names=self.class_names or (),
+            task=self._task,
+            ensemble_report=ensemble_report,
+            stable_rules=stable_rules,
+        )
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _build_surrogate(
+        is_regression: bool,
+        *,
+        max_depth: int = 5,
+        min_samples_leaf: int = 5,
+        ccp_alpha: float = 0.0,
+        monotonic_cst: Optional[np.ndarray] = None,
+        random_state: int = 42,
+    ):
+        """Instantiate a configured sklearn surrogate tree."""
+        kwargs: dict = dict(
+            max_depth=max_depth,
+            min_samples_leaf=min_samples_leaf,
+            ccp_alpha=ccp_alpha,
+            random_state=random_state,
+        )
+        if monotonic_cst is not None:
+            kwargs["monotonic_cst"] = monotonic_cst
+        if is_regression:
+            return DecisionTreeRegressor(**kwargs)
+        return DecisionTreeClassifier(**kwargs)
 
     def _build_report(
         self,
@@ -548,8 +780,15 @@ class Explainer:
                 else:
                     class_counts = value[node_id, 0]
                     predicted_class = int(np.argmax(class_counts))
-                    total = int(class_counts.sum())
-                    confidence = float(class_counts[predicted_class] / total) if total else 0.0
+                    
+                    # Use n_node_samples for the actual sample count (count of rows)
+                    # explicitly, as 'value' might be weighted or behave effectively normalized
+                    real_total = int(tree_.n_node_samples[node_id])
+                    
+                    # Use class_counts sum for confidence calculation to respect weights/distribution
+                    weight_total = class_counts.sum()
+                    confidence = float(class_counts[predicted_class] / weight_total) if weight_total > 0 else 0.0
+                    
                     class_name = (
                         class_names[predicted_class]
                         if predicted_class < len(class_names)
@@ -559,7 +798,7 @@ class Explainer:
                         Rule(
                             conditions=tuple(conditions),
                             prediction=class_name,
-                            samples=total,
+                            samples=real_total,
                             confidence=confidence,
                             leaf_id=node_id,
                         )

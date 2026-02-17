@@ -20,6 +20,7 @@ Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
 Classifier: Typing :: Typed
 Requires-Python: >=3.9
 Description-Content-Type: text/markdown
+License-File: LICENSE
 Requires-Dist: scikit-learn>=1.3
 Requires-Dist: numpy>=1.24
 Requires-Dist: matplotlib>=3.7
@@ -35,6 +36,7 @@ Provides-Extra: dev
 Requires-Dist: pytest>=7.0; extra == "dev"
 Requires-Dist: xgboost; extra == "dev"
 Requires-Dist: lightgbm; extra == "dev"
+Dynamic: license-file
 
 # TRACE — Tree-based Rule Approximation for Comprehensible Explanations
 
@@ -387,7 +389,7 @@ datasets, measuring execution time, fidelity, and feature overlap (Jaccard).
 ## Development
 
 ```bash
-git clone https://github.com/your-username/trace-xai.git
+git clone https://github.com/mariotrerotola/trace-xai.git
 cd trace-xai
 pip install -e ".[dev]"
 pytest tests/ -v
@@ -400,11 +402,11 @@ pytest tests/ -v
 If you use TRACE in your research, please cite:
 
 ```bibtex
-@software{trace2025,
+@software{trace2026,
   title   = {{TRACE}: Tree-based Rule Approximation for Comprehensible Explanations},
   author  = {Trerotola, Mario},
-  year    = {2025},
-  url     = {https://github.com/your-username/trace-xai},
+  year    = {2026},
+  url     = {https://github.com/mariotrerotola/trace-xai},
   note    = {Python package version 0.1.0},
 }
 ```

@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Explainer Report</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+         background: #f5f5f5; color: #333; padding: 2rem; }
+  h1 { margin-bottom: 1rem; }
+  .report { background: #fff; padding: 1rem; border-radius: 6px;
+             margin-bottom: 1.5rem; white-space: pre-wrap;
+             font-family: monospace; font-size: 0.85rem;
+             box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .controls { margin-bottom: 1rem; display: flex; flex-wrap: wrap; gap: 0.5rem;
+               align-items: center; }
+  .filter-btn { padding: 0.3rem 0.8rem; border: 1px solid #ccc; border-radius: 4px;
+                 background: #fff; cursor: pointer; font-size: 0.85rem; }
+  .filter-btn.active { background: #4a90d9; color: #fff; border-color: #4a90d9; }
+  input[type=text] { padding: 0.3rem 0.6rem; border: 1px solid #ccc;
+                      border-radius: 4px; font-size: 0.85rem; width: 250px; }
+  table { width: 100%; border-collapse: collapse; background: #fff;
+           box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-radius: 6px;
+           overflow: hidden; }
+  th, td { text-align: left; padding: 0.5rem 0.8rem; border-bottom: 1px solid #eee; }
+  th { background: #4a90d9; color: #fff; cursor: pointer; user-select: none; }
+  th:hover { background: #3a7bc8; }
+  tr.hidden { display: none; }
+  .conditions { font-family: monospace; font-size: 0.82rem; }
+</style>
+</head>
+<body>
+<h1>Explainer General &mdash; Report</h1>
+<div class="report">=== Fidelity Report ===
+  Evaluation type: hold_out
+  Fidelity (surrogate vs black-box): 0.8222
+  Surrogate accuracy (vs true labels): 0.8194
+  Black-box accuracy (vs true labels): 0.9806
+  Number of rules: 34
+  Avg rule length: 5.65
+  Max rule length: 7
+  Surrogate depth: 7
+  Surrogate leaves: 34
+  Samples used: 360
+  Avg conditions/feature: 0.0882
+  Interaction strength: 1.0000
+  Per-class fidelity:
+    Digit_0: 0.9091
+    Digit_1: 0.7241
+    Digit_2: 0.6970
+    Digit_3: 0.7647
+    Digit_4: 0.8511
+    Digit_5: 0.9149
+    Digit_6: 0.9143
+    Digit_7: 0.8182
+    Digit_8: 0.7000
+    Digit_9: 0.8462</div>
+
+<h2>Rules</h2>
+<div class="controls">
+  <button class="filter-btn active" data-class="all">All</button>
+<button class="filter-btn" data-class="Digit_0">Digit_0</button>
+<button class="filter-btn" data-class="Digit_1">Digit_1</button>
+<button class="filter-btn" data-class="Digit_2">Digit_2</button>
+<button class="filter-btn" data-class="Digit_3">Digit_3</button>
+<button class="filter-btn" data-class="Digit_4">Digit_4</button>
+<button class="filter-btn" data-class="Digit_5">Digit_5</button>
+<button class="filter-btn" data-class="Digit_6">Digit_6</button>
+<button class="filter-btn" data-class="Digit_7">Digit_7</button>
+<button class="filter-btn" data-class="Digit_8">Digit_8</button>
+<button class="filter-btn" data-class="Digit_9">Digit_9</button>
+
+  <input type="text" id="search" placeholder="Search features...">
+</div>
+<table id="rules-table">
+  <thead>
+    <tr>
+      <th data-sort="num">#</th>
+      <th>Conditions</th>
+      <th>Prediction</th>
+      <th data-sort="num">Confidence</th>
+      <th data-sort="num">Samples</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr data-class="Digit_5"><td>1</td><td class="conditions">pixel_36 &lt;= -1.6608 AND pixel_42 &lt;= -0.2853 AND pixel_21 &lt;= -0.2274</td><td class="prediction">Digit_5</td><td>84.62%</td><td>1</td></tr>
+<tr data-class="Digit_9"><td>2</td><td class="conditions">pixel_36 &lt;= -1.6608 AND pixel_42 &lt;= -0.2853 AND pixel_21 &gt; -0.2274 AND pixel_21 &lt;= 0.7378</td><td class="prediction">Digit_9</td><td>80.00%</td><td>1</td></tr>
+<tr data-class="Digit_9"><td>3</td><td class="conditions">pixel_36 &lt;= -1.6608 AND pixel_42 &lt;= -0.2853 AND pixel_21 &gt; -0.2274 AND pixel_21 &gt; 0.7378</td><td class="prediction">Digit_9</td><td>100.00%</td><td>1</td></tr>
+<tr data-class="Digit_4"><td>4</td><td class="conditions">pixel_36 &lt;= -1.6608 AND pixel_42 &gt; -0.2853 AND pixel_21 &lt;= -1.1926</td><td class="prediction">Digit_4</td><td>35.71%</td><td>1</td></tr>
+<tr data-class="Digit_0"><td>5</td><td class="conditions">pixel_36 &lt;= -1.6608 AND pixel_42 &gt; -0.2853 AND pixel_21 &gt; -1.1926 AND pixel_27 &lt;= 0.3567 AND pixel_34 &lt;= -0.1645</td><td class="prediction">Digit_0</td><td>80.00%</td><td>1</td></tr>
+<tr data-class="Digit_0"><td>6</td><td class="conditions">pixel_36 &lt;= -1.6608 AND pixel_42 &gt; -0.2853 AND pixel_21 &gt; -1.1926 AND pixel_27 &lt;= 0.3567 AND pixel_34 &gt; -0.1645</td><td class="prediction">Digit_0</td><td>100.00%</td><td>1</td></tr>
+<tr data-class="Digit_0"><td>7</td><td class="conditions">pixel_36 &lt;= -1.6608 AND pixel_42 &gt; -0.2853 AND pixel_21 &gt; -1.1926 AND pixel_27 &gt; 0.3567</td><td class="prediction">Digit_0</td><td>45.45%</td><td>1</td></tr>
+<tr data-class="Digit_2"><td>8</td><td class="conditions">pixel_36 &gt; -1.6608 AND pixel_21 &lt;= -1.1926 AND pixel_42 &lt;= 0.2509 AND pixel_5 &lt;= -0.7709 AND pixel_27 &lt;= 0.7786 AND pixel_37 &lt;= -1.2173 AND pixel_2 &lt;= 1.0967</td><td class="prediction">Digit_2</td><td>90.00%</td><td>1</td></tr>
+<tr data-class="Digit_2"><td>9</td><td class="conditions">pixel_36 &gt; -1.6608 AND pixel_21 &lt;= -1.1926 AND pixel_42 &lt;= 0.2509 AND pixel_5 &lt;= -0.7709 AND pixel_27 &lt;= 0.7786 AND pixel_37 &lt;= -1.2173 AND pixel_2 &gt; 1.0967</td><td class="prediction">Digit_2</td><td>100.00%</td><td>1</td></tr>
+<tr data-class="Digit_1"><td>10</td><td class="conditions">pixel_36 &gt; -1.6608 AND pixel_21 &lt;= -1.1926 AND pixel_42 &lt;= 0.2509 AND pixel_5 &lt;= -0.7709 AND pixel_27 &lt;= 0.7786 AND pixel_37 &gt; -1.2173</td><td class="prediction">Digit_1</td><td>20.00%</td><td>1</td></tr>
+<tr data-class="Digit_1"><td>11</td><td class="conditions">pixel_36 &gt; -1.6608 AND pixel_21 &lt;= -1.1926 AND pixel_42 &lt;= 0.2509 AND pixel_5 &lt;= -0.7709 AND pixel_27 &gt; 0.7786 AND pixel_46 &lt;= -0.2226</td><td class="prediction">Digit_1</td><td>100.00%</td><td>1</td></tr>
+<tr data-class="Digit_3"><td>12</td><td class="conditions">pixel_36 &gt; -1.6608 AND pixel_21 &lt;= -1.1926 AND pixel_42 &lt;= 0.2509 AND pixel_5 &lt;= -0.7709 AND pixel_27 &gt; 0.7786 AND pixel_46 &gt; -0.2226</td><td class="prediction">Digit_3</td><td>61.54%</td><td>1</td></tr>
+<tr data-class="Digit_5"><td>13</td><td class="conditions">pixel_36 &gt; -1.6608 AND pixel_21 &lt;= -1.1926 AND pixel_42 &lt;= 0.2509 AND pixel_5 &gt; -0.7709 AND pixel_5 &lt;= -0.0606</td><td class="prediction">Digit_5</td><td>63.64%</td><td>1</td></tr>
+<tr data-class="Digit_5"><td>14</td><td class="conditions">pixel_36 &gt; -1.6608 AND pixel_21 &lt;= -1.1926 AND pixel_42 &lt;= 0.2509 AND pixel_5 &gt; -0.7709 AND pixel_5 &gt; -0.0606 AND pixel_58 &lt;= -0.2073</td><td class="prediction">Digit_5</td><td>90.00%</td><td>1</td></tr>
+<tr data-class="Digit_5"><td>15</td><td class="conditions">pixel_36 &gt; -1.6608 AND pixel_21 &lt;= -1.1926 AND pixel_42 &lt;= 0.2509 AND pixel_5 &gt; -0.7709 AND pixel_5 &gt; -0.0606 AND pixel_58 &gt; -0.2073</td><td class="prediction">Digit_5</td><td>100.00%</td><td>1</td></tr>
+<tr data-class="Digit_4"><td>16</td><td class="conditions">pixel_36 &gt; -1.6608 AND pixel_21 &lt;= -1.1926 AND pixel_42 &gt; 0.2509 AND pixel_54 &lt;= -0.4578 AND pixel_10 &lt;= -0.8831</td><td class="prediction">Digit_4</td><td>94.12%</td><td>1</td></tr>
+<tr data-class="Digit_1"><td>17</td><td class="conditions">pixel_36 &gt; -1.6608 AND pixel_21 &lt;= -1.1926 AND pixel_42 &gt; 0.2509 AND pixel_54 &lt;= -0.4578 AND pixel_10 &gt; -0.8831</td><td class="prediction">Digit_1</td><td>35.29%</td><td>1</td></tr>
+<tr data-class="Digit_6"><td>18</td><td class="conditions">pixel_36 &gt; -1.6608 AND pixel_21 &lt;= -1.1926 AND pixel_42 &gt; 0.2509 AND pixel_54 &gt; -0.4578 AND pixel_10 &lt;= 0.5839</td><td class="prediction">Digit_6</td><td>100.00%</td><td>1</td></tr>
+<tr data-class="Digit_2"><td>19</td><td class="conditions">pixel_36 &gt; -1.6608 AND pixel_21 &lt;= -1.1926 AND pixel_42 &gt; 0.2509 AND pixel_54 &gt; -0.4578 AND pixel_10 &gt; 0.5839</td><td class="prediction">Digit_2</td><td>60.00%</td><td>1</td></tr>
+<tr data-class="Digit_7"><td>20</td><td class="conditions">pixel_36 &gt; -1.6608 AND pixel_21 &gt; -1.1926 AND pixel_60 &lt;= -1.9128 AND pixel_26 &lt;= 0.5717 AND pixel_37 &lt;= -1.0464</td><td class="prediction">Digit_7</td><td>69.23%</td><td>1</td></tr>
+<tr data-class="Digit_7"><td>21</td><td class="conditions">pixel_36 &gt; -1.6608 AND pixel_21 &gt; -1.1926 AND pixel_60 &lt;= -1.9128 AND pixel_26 &lt;= 0.5717 AND pixel_37 &gt; -1.0464</td><td class="prediction">Digit_7</td><td>100.00%</td><td>1</td></tr>
+<tr data-class="Digit_4"><td>22</td><td class="conditions">pixel_36 &gt; -1.6608 AND pixel_21 &gt; -1.1926 AND pixel_60 &lt;= -1.9128 AND pixel_26 &gt; 0.5717</td><td class="prediction">Digit_4</td><td>33.33%</td><td>1</td></tr>
+<tr data-class="Digit_3"><td>23</td><td class="conditions">pixel_36 &gt; -1.6608 AND pixel_21 &gt; -1.1926 AND pixel_60 &gt; -1.9128 AND pixel_33 &lt;= 0.6548 AND pixel_43 &lt;= -0.7474 AND pixel_26 &lt;= -0.8831 AND pixel_19 &lt;= 0.2337</td><td class="prediction">Digit_3</td><td>94.44%</td><td>1</td></tr>
+<tr data-class="Digit_8"><td>24</td><td class="conditions">pixel_36 &gt; -1.6608 AND pixel_21 &gt; -1.1926 AND pixel_60 &gt; -1.9128 AND pixel_33 &lt;= 0.6548 AND pixel_43 &lt;= -0.7474 AND pixel_26 &lt;= -0.8831 AND pixel_19 &gt; 0.2337</td><td class="prediction">Digit_8</td><td>27.27%</td><td>1</td></tr>
+<tr data-class="Digit_9"><td>25</td><td class="conditions">pixel_36 &gt; -1.6608 AND pixel_21 &gt; -1.1926 AND pixel_60 &gt; -1.9128 AND pixel_33 &lt;= 0.6548 AND pixel_43 &lt;= -0.7474 AND pixel_26 &gt; -0.8831 AND pixel_42 &lt;= 0.6339</td><td class="prediction">Digit_9</td><td>59.54%</td><td>1</td></tr>
+<tr data-class="Digit_8"><td>26</td><td class="conditions">pixel_36 &gt; -1.6608 AND pixel_21 &gt; -1.1926 AND pixel_60 &gt; -1.9128 AND pixel_33 &lt;= 0.6548 AND pixel_43 &lt;= -0.7474 AND pixel_26 &gt; -0.8831 AND pixel_42 &gt; 0.6339</td><td class="prediction">Digit_8</td><td>93.75%</td><td>1</td></tr>
+<tr data-class="Digit_7"><td>27</td><td class="conditions">pixel_36 &gt; -1.6608 AND pixel_21 &gt; -1.1926 AND pixel_60 &gt; -1.9128 AND pixel_33 &lt;= 0.6548 AND pixel_43 &gt; -0.7474 AND pixel_27 &lt;= 0.1036 AND pixel_61 &lt;= -1.0688</td><td class="prediction">Digit_7</td><td>85.71%</td><td>1</td></tr>
+<tr data-class="Digit_2"><td>28</td><td class="conditions">pixel_36 &gt; -1.6608 AND pixel_21 &gt; -1.1926 AND pixel_60 &gt; -1.9128 AND pixel_33 &lt;= 0.6548 AND pixel_43 &gt; -0.7474 AND pixel_27 &lt;= 0.1036 AND pixel_61 &gt; -1.0688</td><td class="prediction">Digit_2</td><td>0.00%</td><td>0</td></tr>
+<tr data-class="Digit_8"><td>29</td><td class="conditions">pixel_36 &gt; -1.6608 AND pixel_21 &gt; -1.1926 AND pixel_60 &gt; -1.9128 AND pixel_33 &lt;= 0.6548 AND pixel_43 &gt; -0.7474 AND pixel_27 &gt; 0.1036 AND pixel_20 &lt;= 1.3599</td><td class="prediction">Digit_8</td><td>77.24%</td><td>1</td></tr>
+<tr data-class="Digit_1"><td>30</td><td class="conditions">pixel_36 &gt; -1.6608 AND pixel_21 &gt; -1.1926 AND pixel_60 &gt; -1.9128 AND pixel_33 &lt;= 0.6548 AND pixel_43 &gt; -0.7474 AND pixel_27 &gt; 0.1036 AND pixel_20 &gt; 1.3599</td><td class="prediction">Digit_1</td><td>76.47%</td><td>1</td></tr>
+<tr data-class="Digit_4"><td>31</td><td class="conditions">pixel_36 &gt; -1.6608 AND pixel_21 &gt; -1.1926 AND pixel_60 &gt; -1.9128 AND pixel_33 &gt; 0.6548 AND pixel_5 &lt;= 0.6497 AND pixel_27 &lt;= 0.7786 AND pixel_51 &lt;= 0.9313</td><td class="prediction">Digit_4</td><td>100.00%</td><td>1</td></tr>
+<tr data-class="Digit_4"><td>32</td><td class="conditions">pixel_36 &gt; -1.6608 AND pixel_21 &gt; -1.1926 AND pixel_60 &gt; -1.9128 AND pixel_33 &gt; 0.6548 AND pixel_5 &lt;= 0.6497 AND pixel_27 &lt;= 0.7786 AND pixel_51 &gt; 0.9313</td><td class="prediction">Digit_4</td><td>81.82%</td><td>1</td></tr>
+<tr data-class="Digit_4"><td>33</td><td class="conditions">pixel_36 &gt; -1.6608 AND pixel_21 &gt; -1.1926 AND pixel_60 &gt; -1.9128 AND pixel_33 &gt; 0.6548 AND pixel_5 &lt;= 0.6497 AND pixel_27 &gt; 0.7786</td><td class="prediction">Digit_4</td><td>60.00%</td><td>1</td></tr>
+<tr data-class="Digit_1"><td>34</td><td class="conditions">pixel_36 &gt; -1.6608 AND pixel_21 &gt; -1.1926 AND pixel_60 &gt; -1.9128 AND pixel_33 &gt; 0.6548 AND pixel_5 &gt; 0.6497</td><td class="prediction">Digit_1</td><td>38.89%</td><td>1</td></tr>
+  </tbody>
+</table>
+
+<script>
+(function() {
+  const table = document.getElementById('rules-table');
+  const tbody = table.querySelector('tbody');
+  const rows = () => Array.from(tbody.querySelectorAll('tr'));
+  let activeClass = 'all';
+
+  // Filter buttons
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelector('.filter-btn.active').classList.remove('active');
+      btn.classList.add('active');
+      activeClass = btn.dataset.class;
+      applyFilters();
+    });
+  });
+
+  // Search
+  const searchInput = document.getElementById('search');
+  searchInput.addEventListener('input', applyFilters);
+
+  function applyFilters() {
+    const q = searchInput.value.toLowerCase();
+    rows().forEach(row => {
+      const matchClass = activeClass === 'all' || row.dataset.class === activeClass;
+      const matchSearch = !q || row.textContent.toLowerCase().includes(q);
+      row.classList.toggle('hidden', !(matchClass && matchSearch));
+    });
+  }
+
+  // Sortable headers
+  table.querySelectorAll('th').forEach((th, idx) => {
+    th.addEventListener('click', () => {
+      const isNum = th.dataset.sort === 'num';
+      const sorted = rows().sort((a, b) => {
+        let va = a.children[idx].textContent.replace('%','');
+        let vb = b.children[idx].textContent.replace('%','');
+        if (isNum) return (parseFloat(vb) || 0) - (parseFloat(va) || 0);
+        return va.localeCompare(vb);
+      });
+      sorted.forEach(r => tbody.appendChild(r));
+    });
+  });
+})();
+</script>
+</body>
+</html>

@@ -13,6 +13,14 @@ from .report import (
 from .ruleset import Condition, Rule, RuleSet
 from .html_export import export_html
 from .visualization import export_dot, plot_surrogate_tree
+from .pruning import PruningConfig, PruningReport, prune_ruleset
+from .monotonicity import (
+    MonotonicityReport,
+    MonotonicityViolation,
+    validate_monotonicity,
+    filter_monotonic_violations,
+)
+from .ensemble import EnsembleReport, StableRule
 
 __all__ = [
     "Explainer",
@@ -30,4 +38,16 @@ __all__ = [
     "plot_surrogate_tree",
     "export_dot",
     "export_html",
+    # Pruning
+    "PruningConfig",
+    "PruningReport",
+    "prune_ruleset",
+    # Monotonicity
+    "MonotonicityReport",
+    "MonotonicityViolation",
+    "validate_monotonicity",
+    "filter_monotonic_violations",
+    # Ensemble
+    "EnsembleReport",
+    "StableRule",
 ]

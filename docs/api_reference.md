@@ -30,6 +30,18 @@ from trace_xai import (
     plot_surrogate_tree,
     export_dot,
     export_html,
+    # Pruning
+    PruningConfig,
+    PruningReport,
+    prune_ruleset,
+    # Monotonicity
+    MonotonicityReport,
+    MonotonicityViolation,
+    validate_monotonicity,
+    filter_monotonic_violations,
+    # Ensemble
+    EnsembleReport,
+    StableRule,
 )
 ```
 
@@ -77,6 +89,9 @@ def extract_rules(
     y=None,
     max_depth=5,
     min_samples_leaf=5,
+    ccp_alpha=0.0,
+    monotonic_constraints=None,
+    pruning=None,
     X_val=None,
     y_val=None,
     validation_split=None,
@@ -94,6 +109,9 @@ Extract interpretable IF-THEN rules from the black-box model.
 | `y` | array-like `(n,)` | `None` | True labels. Used only for accuracy metrics in the report. |
 | `max_depth` | `int` | `5` | Maximum depth of the surrogate tree. |
 | `min_samples_leaf` | `int` | `5` | Minimum samples per leaf in the surrogate tree. |
+| `ccp_alpha` | `float` | `0.0` | Cost-complexity pruning parameter for the sklearn tree. Higher values = more pruning. |
+| `monotonic_constraints` | `dict[str, int]` | `None` | Map feature names to `+1` (increasing), `-1` (decreasing), or `0` (no constraint). Requires sklearn with `monotonic_cst` support. |
+| `pruning` | `PruningConfig` | `None` | Post-hoc rule pruning configuration. When provided, `pruned_rules` and `pruning_report` are populated on the result. |
 | `X_val` | array-like | `None` | Separate validation set for hold-out fidelity evaluation. |
 | `y_val` | array-like | `None` | True labels for the validation set. |
 | `validation_split` | `float` | `None` | Internal split ratio (0 < value < 1). Mutually exclusive with `X_val`. |
@@ -107,6 +125,7 @@ Extract interpretable IF-THEN rules from the black-box model.
 
 - `ValueError` — if both `X_val` and `validation_split` are provided.
 - `ValueError` — if `surrogate_type` is not `"decision_tree"`.
+- `RuntimeError` — if `monotonic_constraints` is provided but sklearn does not support `monotonic_cst`.
 
 ---
 
@@ -156,6 +175,7 @@ def compute_stability(
     max_depth=5,
     min_samples_leaf=5,
     random_state=42,
+    tolerance=None,
 ) -> StabilityReport
 ```
 
@@ -172,6 +192,7 @@ Jaccard similarities on canonical rule signatures.
 | `max_depth` | `int` | `5` | Surrogate tree depth. |
 | `min_samples_leaf` | `int` | `5` | Minimum samples per leaf. |
 | `random_state` | `int` | `42` | Random seed. |
+| `tolerance` | `float` or `None` | `None` | If given, use fuzzy rule signatures (thresholds rounded to the nearest multiple of `tolerance`) for more realistic Jaccard scores. |
 
 #### Returns
 
@@ -215,6 +236,82 @@ if `y` is provided).
 
 ---
 
+### `Explainer.prune_rules()`
+
+```python
+def prune_rules(
+    self,
+    result: ExplanationResult,
+    config: PruningConfig,
+) -> ExplanationResult
+```
+
+Apply post-hoc pruning to an existing `ExplanationResult`. Returns a new
+`ExplanationResult` with `pruned_rules` and `pruning_report` populated.
+The original rules are preserved unchanged.
+
+#### Parameters
+
+| Name | Type | Default | Description |
+|------|------|---------|-------------|
+| `result` | `ExplanationResult` | *(required)* | A previously computed explanation result. |
+| `config` | `PruningConfig` | *(required)* | Pruning configuration. |
+
+#### Returns
+
+`ExplanationResult`
+
+---
+
+### `Explainer.extract_stable_rules()`
+
+```python
+def extract_stable_rules(
+    self,
+    X,
+    *,
+    y=None,
+    n_estimators=20,
+    frequency_threshold=0.5,
+    tolerance=0.01,
+    max_depth=5,
+    min_samples_leaf=5,
+    ccp_alpha=0.0,
+    monotonic_constraints=None,
+    random_state=42,
+    X_val=None,
+    y_val=None,
+) -> ExplanationResult
+```
+
+Extract stable rules via an ensemble of bootstrap surrogates. Trains
+`n_estimators` surrogate trees on bootstrap samples, then retains only
+rules appearing in at least `frequency_threshold` fraction of trees.
+
+#### Parameters
+
+| Name | Type | Default | Description |
+|------|------|---------|-------------|
+| `X` | array-like `(n, p)` | *(required)* | Training / explanation data. |
+| `y` | array-like `(n,)` | `None` | True labels. Used only for accuracy metrics. |
+| `n_estimators` | `int` | `20` | Number of bootstrap surrogate trees. |
+| `frequency_threshold` | `float` | `0.5` | Minimum fraction of trees a rule must appear in (0–1). |
+| `tolerance` | `float` | `0.01` | Threshold rounding tolerance for fuzzy rule matching. |
+| `max_depth` | `int` | `5` | Surrogate tree depth. |
+| `min_samples_leaf` | `int` | `5` | Minimum samples per leaf. |
+| `ccp_alpha` | `float` | `0.0` | Cost-complexity pruning parameter. |
+| `monotonic_constraints` | `dict[str, int]` | `None` | Monotonicity constraints (see `extract_rules()`). |
+| `random_state` | `int` | `42` | Random seed. |
+| `X_val` | array-like | `None` | Separate validation set for fidelity evaluation. |
+| `y_val` | array-like | `None` | True labels for the validation set. |
+
+#### Returns
+
+`ExplanationResult` with `stable_rules` (list of `StableRule`) and
+`ensemble_report` (`EnsembleReport`) populated.
+
+---
+
 ## `ExplanationResult`
 
 ```python
@@ -231,6 +328,11 @@ Container returned by `Explainer.extract_rules()`.
 | `report` | `FidelityReport` | Fidelity metrics (evaluated on validation data if hold-out was used). |
 | `surrogate` | `DecisionTreeClassifier` or `DecisionTreeRegressor` | The fitted surrogate tree. |
 | `train_report` | `FidelityReport \| None` | In-sample report (only when hold-out evaluation was used). |
+| `pruned_rules` | `RuleSet \| None` | Pruned rule set (when `pruning` config was provided). |
+| `pruning_report` | `PruningReport \| None` | Summary of pruning operations applied. |
+| `monotonicity_report` | `MonotonicityReport \| None` | Monotonicity validation report (when `monotonic_constraints` was provided). |
+| `ensemble_report` | `EnsembleReport \| None` | Ensemble extraction statistics (from `extract_stable_rules()`). |
+| `stable_rules` | `list[StableRule] \| None` | Stable rules with frequency data (from `extract_stable_rules()`). |
 
 ### Methods
 
@@ -313,6 +415,7 @@ An ordered collection of rules extracted from a surrogate tree.
 |--------|---------|-------------|
 | `filter_by_class(class_name)` | `RuleSet` | Subset of rules predicting `class_name`. |
 | `rule_signatures()` | `frozenset[str]` | Canonical rule strings (for Jaccard comparison). |
+| `fuzzy_rule_signatures(tolerance)` | `frozenset[str]` | Fuzzy signatures with thresholds rounded to `tolerance` (for more realistic Jaccard scores). |
 | `to_text()` | `str` | Human-readable multi-line string. |
 
 ---
@@ -400,6 +503,120 @@ class ConfidenceInterval
 
 ---
 
+## `PruningConfig`
+
+```python
+@dataclass(frozen=True)
+class PruningConfig
+```
+
+Configuration for post-hoc rule pruning.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `min_confidence` | `float` | `0.0` | Remove rules with confidence below this threshold (0–1). |
+| `min_samples` | `int` | `0` | Remove rules covering fewer than this many samples. |
+| `min_samples_fraction` | `float` | `0.0` | Remove rules covering less than this fraction of total samples. Requires `total_samples`. |
+| `max_conditions` | `int \| None` | `None` | Truncate rules with more conditions than this limit. |
+| `remove_redundant` | `bool` | `False` | Simplify redundant conditions on the same feature (e.g. `A > 5 AND A > 3` → `A > 5`). |
+| `total_samples` | `int \| None` | `None` | Total samples in the dataset. Required for `min_samples_fraction`. |
+
+---
+
+## `PruningReport`
+
+```python
+@dataclass(frozen=True)
+class PruningReport
+```
+
+Summary of what was removed or simplified during pruning.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `original_count` | `int` | Number of rules before pruning. |
+| `pruned_count` | `int` | Number of rules after pruning. |
+| `removed_low_confidence` | `int` | Rules removed by confidence filter. |
+| `removed_low_samples` | `int` | Rules removed by sample count filter. |
+| `removed_over_max_conditions` | `int` | Rules removed for exceeding max conditions. |
+| `conditions_simplified` | `int` | Number of redundant conditions removed. |
+
+---
+
+## `MonotonicityViolation`
+
+```python
+@dataclass(frozen=True)
+class MonotonicityViolation
+```
+
+A single detected monotonicity violation in the extracted rules.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `rule_index` | `int` | Index of the violating rule in the RuleSet. |
+| `rule` | `Rule` | The violating rule. |
+| `feature` | `str` | Feature with the violated constraint. |
+| `expected_direction` | `int` | Expected direction (`+1` or `-1`). |
+| `description` | `str` | Human-readable description of the violation. |
+
+---
+
+## `MonotonicityReport`
+
+```python
+@dataclass(frozen=True)
+class MonotonicityReport
+```
+
+Result of checking extracted rules against monotonicity constraints.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `constraints` | `dict[str, int]` | The constraint map that was checked. |
+| `violations` | `tuple[MonotonicityViolation, ...]` | All detected violations. |
+| `is_compliant` | `bool` | `True` if no violations were found. |
+
+---
+
+## `StableRule`
+
+```python
+@dataclass(frozen=True)
+class StableRule
+```
+
+A rule that appeared frequently across bootstrap surrogates.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `rule` | `Rule` | The representative rule instance. |
+| `frequency` | `float` | Fraction of trees containing this rule (0–1). |
+| `signature` | `str` | Fuzzy signature used for matching. |
+| `variant_count` | `int` | Number of slightly different variants merged. |
+
+---
+
+## `EnsembleReport`
+
+```python
+@dataclass(frozen=True)
+class EnsembleReport
+```
+
+Summary of the ensemble rule extraction process.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `n_estimators` | `int` | Number of bootstrap surrogate trees. |
+| `frequency_threshold` | `float` | Minimum frequency to retain a rule. |
+| `total_unique_rules` | `int` | Distinct fuzzy signatures across all trees. |
+| `stable_rule_count` | `int` | Rules meeting the frequency threshold. |
+| `mean_rules_per_tree` | `float` | Average number of rules per tree. |
+| `tolerance` | `float` | Threshold rounding tolerance used. |
+
+---
+
 ## Standalone Functions
 
 ### `compute_fidelity_report()`
@@ -455,3 +672,28 @@ export_html(result, output_path) -> None
 ```
 
 Write a self-contained HTML file with interactive rule table.
+
+### `prune_ruleset()`
+
+```python
+prune_ruleset(ruleset: RuleSet, config: PruningConfig) -> tuple[RuleSet, PruningReport]
+```
+
+Apply pruning filters to a `RuleSet`. Returns a new (pruned) `RuleSet` and a
+`PruningReport`. The original `RuleSet` is never mutated.
+
+### `validate_monotonicity()`
+
+```python
+validate_monotonicity(ruleset: RuleSet, constraints: dict[str, int]) -> MonotonicityReport
+```
+
+Check extracted rules for monotonicity violations against the given constraints.
+
+### `filter_monotonic_violations()`
+
+```python
+filter_monotonic_violations(ruleset: RuleSet, report: MonotonicityReport) -> RuleSet
+```
+
+Return a new `RuleSet` with rules causing violations removed.

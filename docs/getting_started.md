@@ -119,6 +119,7 @@ black-box:
 ## Next Steps
 
 - Read the [User Guide](user_guide.md) for hold-out evaluation, cross-validation,
-  stability analysis, and regression.
+  stability analysis, regression, regulatory pruning, monotonicity constraints,
+  and ensemble rule extraction.
 - Read the [API Reference](api_reference.md) for complete method signatures.
 - Read the [Methodology](methodology.md) for the scientific background.
