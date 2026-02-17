@@ -1,0 +1,416 @@
+Metadata-Version: 2.4
+Name: trace-xai
+Version: 0.1.0
+Summary: TRACE: Tree-based Rule Approximation for Comprehensible Explanations — model-agnostic rule extraction via surrogate decision trees
+Author: Mario Trerotola
+License: MIT
+Project-URL: Documentation, https://github.com/your-username/trace-xai/tree/main/docs
+Project-URL: Repository, https://github.com/your-username/trace-xai
+Project-URL: Issues, https://github.com/your-username/trace-xai/issues
+Keywords: explainability,interpretability,xai,surrogate,decision-tree,rule-extraction,machine-learning,trace
+Classifier: Development Status :: 4 - Beta
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
+Classifier: Typing :: Typed
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: scikit-learn>=1.3
+Requires-Dist: numpy>=1.24
+Requires-Dist: matplotlib>=3.7
+Provides-Extra: graphviz
+Requires-Dist: graphviz>=0.20; extra == "graphviz"
+Provides-Extra: gam
+Requires-Dist: pygam>=0.9; extra == "gam"
+Provides-Extra: benchmark
+Requires-Dist: lime; extra == "benchmark"
+Requires-Dist: shap>=0.43; extra == "benchmark"
+Requires-Dist: pandas; extra == "benchmark"
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: xgboost; extra == "dev"
+Requires-Dist: lightgbm; extra == "dev"
+
+# TRACE — Tree-based Rule Approximation for Comprehensible Explanations
+
+[![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![Tests](https://img.shields.io/badge/tests-57%20passed-brightgreen.svg)]()
+
+**TRACE** (`trace-xai`) is a model-agnostic explainability framework that
+extracts human-readable IF-THEN rules from *any* machine learning model —
+classifiers and regressors alike — through surrogate decision-tree approximation.
+
+Unlike instance-level methods (LIME, SHAP), TRACE produces a **global, symbolic
+explanation** of the entire decision boundary, complemented by rigorous
+statistical validation: hold-out fidelity, cross-validated fidelity, bootstrap
+confidence intervals, and rule-stability analysis.
+
+---
+
+## Key Features
+
+| Feature | Description |
+|---------|-------------|
+| **Model-agnostic** | Works with any object exposing `.predict()` — sklearn, XGBoost, LightGBM, PyTorch wrappers, etc. |
+| **Classification & Regression** | Auto-detects the task; uses appropriate surrogates and metrics (accuracy / R², MSE). |
+| **Hold-out Fidelity** | Evaluate surrogate faithfulness on unseen data via `X_val` or `validation_split`. |
+| **Cross-Validated Fidelity** | *k*-fold CV fidelity with per-fold reports. |
+| **Bootstrap Stability** | Jaccard-based rule stability across bootstrap resamples. |
+| **Confidence Intervals** | Percentile bootstrap CIs for fidelity and accuracy. |
+| **Normalised Complexity** | `avg_conditions_per_feature` and `interaction_strength` metrics. |
+| **Interactive HTML Export** | Self-contained HTML report with filterable, sortable, searchable rules. |
+| **Visualization** | matplotlib tree plots and Graphviz DOT export. |
+| **Extensible Surrogates** | Protocol-based surrogate interface; decision-tree implemented, rule-list and GAM placeholders ready. |
+
+---
+
+## Installation
+
+```bash
+pip install trace-xai
+```
+
+With optional dependencies:
+
+```bash
+pip install trace-xai[graphviz]     # Graphviz DOT export
+pip install trace-xai[benchmark]    # LIME/SHAP comparative benchmark
+pip install trace-xai[dev]          # pytest, xgboost, lightgbm
+```
+
+---
+
+## Quick Start
+
+### Classification
+
+```python
+from sklearn.datasets import load_iris
+from sklearn.ensemble import RandomForestClassifier
+from trace_xai import Explainer
+
+# Train any black-box model
+iris = load_iris()
+model = RandomForestClassifier(n_estimators=100, random_state=42)
+model.fit(iris.data, iris.target)
+
+# Extract rules
+explainer = Explainer(
+    model,
+    feature_names=iris.feature_names,
+    class_names=iris.target_names,
+)
+result = explainer.extract_rules(iris.data, y=iris.target, max_depth=4)
+
+# Inspect
+print(result)
+# Rule 1: IF petal_length <= 2.4500 THEN class = setosa  [confidence=100.00%, samples=50]
+# Rule 2: IF petal_length > 2.4500 AND petal_width <= 1.7500 ...
+# ...
+# === Fidelity Report ===
+#   Fidelity (surrogate vs black-box): 0.9800
+#   ...
+```
+
+### Regression
+
+```python
+from sklearn.datasets import make_regression
+from sklearn.ensemble import RandomForestRegressor
+from trace_xai import Explainer
+
+X, y = make_regression(n_samples=500, n_features=5, random_state=42)
+model = RandomForestRegressor(n_estimators=100, random_state=42).fit(X, y)
+
+explainer = Explainer(model, feature_names=[f"x{i}" for i in range(5)])
+# task="regression" is auto-detected when class_names is omitted
+result = explainer.extract_rules(X, y=y, max_depth=5)
+print(result)
+# Rule 1: IF x0 <= -0.3274 AND x1 <= 0.5812 THEN value = -142.3021  [samples=38]
+# ...
+# === Fidelity Report ===
+#   Fidelity R²: 0.9534
+#   Fidelity MSE: 234.56
+```
+
+---
+
+## Hold-out Fidelity
+
+By default, fidelity is computed **in-sample** (same data used for training and
+evaluation). For rigorous assessment, provide a separate validation set or
+request an automatic split:
+
+```python
+# Option A: explicit validation set
+result = explainer.extract_rules(
+    X_train, y=y_train,
+    X_val=X_test, y_val=y_test,
+)
+print(result.report.evaluation_type)   # "hold_out"
+print(result.train_report)             # in-sample metrics
+
+# Option B: automatic internal split (30% held out)
+result = explainer.extract_rules(X, y=y, validation_split=0.3)
+print(result.report.evaluation_type)   # "validation_split"
+```
+
+---
+
+## Cross-Validated Fidelity
+
+```python
+cv_report = explainer.cross_validate_fidelity(X, y=y, n_folds=5)
+print(cv_report)
+# === Cross-Validated Fidelity (5-fold) ===
+#   Mean fidelity: 0.9640 ± 0.0085
+#   Mean accuracy:  0.9587 ± 0.0112
+print(cv_report.fold_reports[0])  # detailed per-fold report
+```
+
+---
+
+## Bootstrap Stability
+
+Measures how consistent the extracted rules are across bootstrap resamples using
+pairwise Jaccard similarity:
+
+```python
+stability = explainer.compute_stability(X, n_bootstraps=20)
+print(stability)
+# === Stability Report (20 bootstraps) ===
+#   Mean Jaccard: 0.7234 ± 0.0891
+```
+
+---
+
+## Confidence Intervals
+
+Bootstrap percentile confidence intervals for fidelity and accuracy, computed as
+a separate step to avoid slowing down `extract_rules`:
+
+```python
+cis = explainer.compute_confidence_intervals(result, X, y=y, n_bootstraps=1000)
+print(f"Fidelity 95% CI: [{cis['fidelity'].lower:.4f}, {cis['fidelity'].upper:.4f}]")
+print(f"Accuracy 95% CI: [{cis['accuracy'].lower:.4f}, {cis['accuracy'].upper:.4f}]")
+```
+
+---
+
+## Normalised Complexity Metrics
+
+Every report includes:
+
+- **`avg_conditions_per_feature`** — average rule length divided by total features
+  (comparable across datasets of different dimensionality).
+- **`interaction_strength`** — fraction of rules referencing > 1 distinct feature
+  (0 = purely univariate, 1 = all multi-feature).
+
+```python
+print(result.report.avg_conditions_per_feature)  # e.g. 0.75
+print(result.report.interaction_strength)         # e.g. 0.83
+```
+
+---
+
+## Visualization
+
+### matplotlib
+
+```python
+result.plot(save_path="tree.png", figsize=(24, 12), dpi=200)
+```
+
+### Graphviz DOT
+
+```python
+dot_string = result.to_dot()
+# render with: dot -Tpdf tree.dot -o tree.pdf
+```
+
+### Interactive HTML
+
+```python
+result.to_html("report.html")
+# Opens a self-contained HTML file with:
+# - Filterable rules by class/prediction
+# - Sortable columns (confidence, samples)
+# - Full-text search on feature names
+```
+
+---
+
+## API Reference
+
+### `Explainer`
+
+```python
+Explainer(model, feature_names, class_names=None, *, task=None)
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `model` | object | Any model with `.predict(X)`. |
+| `feature_names` | Sequence[str] | Feature names matching `X.shape[1]`. |
+| `class_names` | Sequence[str] or None | Class names (required for classification, omit for regression). |
+| `task` | str or None | `"classification"`, `"regression"`, or `None` (auto-detect). |
+
+#### `Explainer.extract_rules()`
+
+```python
+extract_rules(X, *, y=None, max_depth=5, min_samples_leaf=5,
+              X_val=None, y_val=None, validation_split=None,
+              surrogate_type="decision_tree") -> ExplanationResult
+```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `X` | — | Training data. |
+| `y` | None | True labels (for accuracy metrics only). |
+| `max_depth` | 5 | Surrogate tree depth. |
+| `min_samples_leaf` | 5 | Min samples per leaf. |
+| `X_val` | None | External validation set. |
+| `y_val` | None | Labels for validation set. |
+| `validation_split` | None | Internal split ratio (0-1). Mutually exclusive with `X_val`. |
+| `surrogate_type` | `"decision_tree"` | Surrogate backend (only `"decision_tree"` supported currently). |
+
+#### `Explainer.cross_validate_fidelity()`
+
+```python
+cross_validate_fidelity(X, *, y=None, n_folds=5, max_depth=5,
+                        min_samples_leaf=5, random_state=42) -> CVFidelityReport
+```
+
+#### `Explainer.compute_stability()`
+
+```python
+compute_stability(X, *, n_bootstraps=20, max_depth=5,
+                  min_samples_leaf=5, random_state=42) -> StabilityReport
+```
+
+#### `Explainer.compute_confidence_intervals()`
+
+```python
+compute_confidence_intervals(result, X, *, y=None, n_bootstraps=1000,
+                             confidence_level=0.95,
+                             random_state=42) -> dict[str, ConfidenceInterval]
+```
+
+### Data Classes
+
+| Class | Key Fields |
+|-------|------------|
+| `ExplanationResult` | `rules`, `report`, `surrogate`, `train_report` |
+| `RuleSet` | `rules`, `num_rules`, `avg_conditions`, `max_conditions`, `avg_conditions_per_feature`, `interaction_strength` |
+| `Rule` | `conditions`, `prediction`, `confidence`, `samples`, `prediction_value` |
+| `Condition` | `feature`, `operator`, `threshold` |
+| `FidelityReport` | `fidelity`, `accuracy`, `evaluation_type`, `fidelity_r2`, `fidelity_mse`, `fidelity_ci`, `accuracy_ci`, ... |
+| `CVFidelityReport` | `mean_fidelity`, `std_fidelity`, `fold_reports`, `n_folds` |
+| `StabilityReport` | `mean_jaccard`, `std_jaccard`, `pairwise_jaccards`, `n_bootstraps` |
+| `ConfidenceInterval` | `lower`, `upper`, `point_estimate`, `confidence_level` |
+
+---
+
+## Comparison with Other Methods
+
+| | **TRACE** | LIME | SHAP |
+|---|---|---|---|
+| **Scope** | Global | Local (per-instance) | Local / Global |
+| **Output format** | Symbolic IF-THEN rules | Feature weights | Shapley values |
+| **Human readability** | Direct logical rules | Feature importance bars | Feature importance bars |
+| **Fidelity metric** | Built-in (+ hold-out, CV, CI) | N/A | N/A |
+| **Stability analysis** | Built-in (Jaccard bootstrap) | N/A | N/A |
+| **Model requirement** | `.predict()` | `.predict_proba()` | Model-specific |
+| **Regression support** | Yes | Limited | Yes |
+| **Speed** | Single tree fit | *n* optimisations | Model-dependent |
+
+TRACE is **complementary** to LIME/SHAP: use TRACE for global rule-based
+explanation, LIME/SHAP for local per-instance attribution. The included
+`benchmarks/benchmark.py` script directly compares all three.
+
+---
+
+## Project Structure
+
+```
+trace-xai/
+├── src/trace_xai/
+│   ├── __init__.py            # Public API exports
+│   ├── explainer.py           # Explainer, ExplanationResult
+│   ├── ruleset.py             # Condition, Rule, RuleSet
+│   ├── report.py              # FidelityReport, CVFidelityReport, StabilityReport, ConfidenceInterval
+│   ├── visualization.py       # plot_surrogate_tree, export_dot
+│   ├── html_export.py         # Interactive HTML export
+│   └── surrogates/            # Pluggable surrogate backends
+│       ├── base.py            # BaseSurrogate protocol
+│       ├── decision_tree.py   # DecisionTreeSurrogate
+│       ├── rule_list.py       # Placeholder
+│       └── gam.py             # Placeholder
+├── tests/
+│   ├── test_explainer.py      # Core + hold-out + CV + stability + CI tests
+│   ├── test_ruleset.py        # Rule data classes + complexity metrics
+│   ├── test_report.py         # Fidelity report + bootstrap CI tests
+│   ├── test_regression.py     # Full regression support tests
+│   └── test_html_export.py    # HTML export tests
+├── examples/
+│   ├── demo.py                # Basic Iris demo
+│   └── demo_complex.py        # Advanced multi-class demo
+├── benchmarks/
+│   └── benchmark.py           # LIME/SHAP comparison
+└── docs/
+    ├── getting_started.md     # Installation & first steps
+    ├── user_guide.md          # Complete feature guide
+    ├── api_reference.md       # Full API documentation
+    └── methodology.md         # Scientific methodology & references
+```
+
+---
+
+## Running the Benchmark
+
+```bash
+pip install trace-xai[benchmark]
+python benchmarks/benchmark.py
+```
+
+Output compares TRACE vs. LIME vs. SHAP on Iris, Wine, and Breast Cancer
+datasets, measuring execution time, fidelity, and feature overlap (Jaccard).
+
+---
+
+## Development
+
+```bash
+git clone https://github.com/your-username/trace-xai.git
+cd trace-xai
+pip install -e ".[dev]"
+pytest tests/ -v
+```
+
+---
+
+## Citation
+
+If you use TRACE in your research, please cite:
+
+```bibtex
+@software{trace2025,
+  title   = {{TRACE}: Tree-based Rule Approximation for Comprehensible Explanations},
+  author  = {Trerotola, Mario},
+  year    = {2025},
+  url     = {https://github.com/your-username/trace-xai},
+  note    = {Python package version 0.1.0},
+}
+```
+
+---
+
+## License
+
+MIT License. See [LICENSE](LICENSE) for details.

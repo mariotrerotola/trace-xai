@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trace-xai"
+version = "0.1.0"
+description = "TRACE: Tree-based Rule Approximation for Comprehensible Explanations — model-agnostic rule extraction via surrogate decision trees"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    {name = "Mario Trerotola"},
+]
+keywords = [
+    "explainability",
+    "interpretability",
+    "xai",
+    "surrogate",
+    "decision-tree",
+    "rule-extraction",
+    "machine-learning",
+    "trace",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+dependencies = [
+    "scikit-learn>=1.3",
+    "numpy>=1.24",
+    "matplotlib>=3.7",
+]
+
+[project.urls]
+Documentation = "https://github.com/your-username/trace-xai/tree/main/docs"
+Repository = "https://github.com/your-username/trace-xai"
+Issues = "https://github.com/your-username/trace-xai/issues"
+
+[project.optional-dependencies]
+graphviz = ["graphviz>=0.20"]
+gam = ["pygam>=0.9"]
+benchmark = ["lime", "shap>=0.43", "pandas"]
+dev = [
+    "pytest>=7.0",
+    "xgboost",
+    "lightgbm",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
