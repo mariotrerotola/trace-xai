@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -27,16 +26,13 @@ class Rule:
     conditions : tuple of Condition
         The conjunction of split predicates leading to this leaf.
     prediction : str
-        The predicted class name (or formatted value for regression).
+        The predicted class name.
     samples : int
         Number of training samples that reached this leaf.
     confidence : float
         Fraction of the dominant class at this leaf (0-1).
-        For regression rules this is always 1.0.
     leaf_id : int
         Node id inside the surrogate tree.
-    prediction_value : float or None
-        Numeric prediction value (regression only).
     """
 
     conditions: tuple[Condition, ...]
@@ -44,18 +40,12 @@ class Rule:
     samples: int
     confidence: float
     leaf_id: int
-    prediction_value: Optional[float] = None
 
     def __str__(self) -> str:
         if self.conditions:
             antecedent = " AND ".join(str(c) for c in self.conditions)
         else:
             antecedent = "TRUE"
-        if self.prediction_value is not None:
-            return (
-                f"IF {antecedent} THEN value = {self.prediction_value:.4f}"
-                f"  [samples={self.samples}]"
-            )
         return (
             f"IF {antecedent} THEN class = {self.prediction}"
             f"  [confidence={self.confidence:.2%}, samples={self.samples}]"

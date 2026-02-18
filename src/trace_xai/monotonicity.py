@@ -95,19 +95,17 @@ def validate_monotonicity(
     feature. If the constraint is +1 (increasing) but a rule assigns a lower
     prediction value to a higher threshold region, that's a violation.
 
-    Works for regression rules (compares ``prediction_value``). For
-    classification rules, violations are detected when sibling rules
-    (same conditions except for one split on the constrained feature) predict
-    different classes in a direction-inconsistent way.
+    Violations are detected when sibling rules (same conditions except for
+    one split on the constrained feature) predict different classes in a
+    direction-inconsistent way.
     """
     violations: list[MonotonicityViolation] = []
-    is_regression = any(r.prediction_value is not None for r in ruleset.rules)
 
     for feature, direction in constraints.items():
         if direction == 0:
             continue
         _check_feature_monotonicity(
-            ruleset, feature, direction, is_regression, violations,
+            ruleset, feature, direction, violations,
         )
 
     return MonotonicityReport(
@@ -121,7 +119,6 @@ def _check_feature_monotonicity(
     ruleset: RuleSet,
     feature: str,
     direction: int,
-    is_regression: bool,
     violations: list[MonotonicityViolation],
 ) -> None:
     """Check monotonicity for a single feature across all rule pairs.
@@ -171,48 +168,19 @@ def _check_feature_monotonicity(
             if val_a is None or val_b is None:
                 continue
 
-            if is_regression:
-                pred_a = rule_a.prediction_value or 0.0
-                pred_b = rule_b.prediction_value or 0.0
-
-                if direction == 1 and pred_b < pred_a:
-                    violations.append(MonotonicityViolation(
-                        rule_index=idx_b,
-                        rule=rule_b,
-                        feature=feature,
-                        expected_direction=direction,
-                        description=(
-                            f"Feature '{feature}' should be increasing, but "
-                            f"prediction drops from {pred_a:.4f} to {pred_b:.4f} "
-                            f"as feature value increases."
-                        ),
-                    ))
-                elif direction == -1 and pred_b > pred_a:
-                    violations.append(MonotonicityViolation(
-                        rule_index=idx_b,
-                        rule=rule_b,
-                        feature=feature,
-                        expected_direction=direction,
-                        description=(
-                            f"Feature '{feature}' should be decreasing, but "
-                            f"prediction rises from {pred_a:.4f} to {pred_b:.4f} "
-                            f"as feature value increases."
-                        ),
-                    ))
-            else:
-                # Classification: different predictions indicate potential violation
-                if rule_a.prediction != rule_b.prediction:
-                    violations.append(MonotonicityViolation(
-                        rule_index=idx_b,
-                        rule=rule_b,
-                        feature=feature,
-                        expected_direction=direction,
-                        description=(
-                            f"Feature '{feature}' (constraint={direction:+d}): "
-                            f"class changes from '{rule_a.prediction}' to "
-                            f"'{rule_b.prediction}' as feature value increases."
-                        ),
-                    ))
+            # Classification: different predictions indicate potential violation
+            if rule_a.prediction != rule_b.prediction:
+                violations.append(MonotonicityViolation(
+                    rule_index=idx_b,
+                    rule=rule_b,
+                    feature=feature,
+                    expected_direction=direction,
+                    description=(
+                        f"Feature '{feature}' (constraint={direction:+d}): "
+                        f"class changes from '{rule_a.prediction}' to "
+                        f"'{rule_b.prediction}' as feature value increases."
+                    ),
+                ))
 
 
 def _compute_representative_value(
@@ -251,4 +219,108 @@ def filter_monotonic_violations(
         rules=filtered,
         feature_names=ruleset.feature_names,
         class_names=ruleset.class_names,
+    )
+
+
+@dataclass(frozen=True)
+class MonotonicityEnforcementResult:
+    """Result of constructive monotonicity enforcement.
+
+    Attributes
+    ----------
+    corrected_ruleset : RuleSet
+        Rules with violations removed and fidelity impact measured.
+    original_report : MonotonicityReport
+        The validation report before enforcement.
+    rules_removed : int
+        Number of rules removed.
+    fidelity_impact : float or None
+        Change in fidelity after enforcement (negative = fidelity loss).
+        None if surrogate/data not provided.
+    """
+
+    corrected_ruleset: RuleSet
+    original_report: MonotonicityReport
+    rules_removed: int
+    fidelity_impact: Optional[float]
+
+
+def enforce_monotonicity(
+    ruleset: RuleSet,
+    constraints: Dict[str, int],
+    *,
+    surrogate=None,
+    X=None,
+    model=None,
+) -> MonotonicityEnforcementResult:
+    """Constructively enforce monotonicity: validate, remove violations,
+    and report the fidelity impact.
+
+    This addresses the criticism that monotonicity validation is reactive
+    (only diagnoses) rather than constructive (diagnoses and fixes).
+
+    Parameters
+    ----------
+    ruleset : RuleSet
+        The extracted rules.
+    constraints : dict mapping feature name to {+1, -1, 0}
+        Monotonicity constraints.
+    surrogate : fitted tree, optional
+        If provided with X and model, computes fidelity impact.
+    X : array-like, optional
+        Data for fidelity evaluation.
+    model : object, optional
+        Black-box model for fidelity evaluation.
+
+    Returns
+    -------
+    MonotonicityEnforcementResult
+    """
+    # Step 1: Validate
+    report = validate_monotonicity(ruleset, constraints)
+
+    if report.is_compliant:
+        return MonotonicityEnforcementResult(
+            corrected_ruleset=ruleset,
+            original_report=report,
+            rules_removed=0,
+            fidelity_impact=0.0,
+        )
+
+    # Step 2: Remove violating rules
+    corrected = filter_monotonic_violations(ruleset, report)
+    rules_removed = ruleset.num_rules - corrected.num_rules
+
+    # Step 3: Measure fidelity impact if possible
+    fidelity_impact: Optional[float] = None
+    if surrogate is not None and X is not None and model is not None:
+        import numpy as np
+        from sklearn.metrics import accuracy_score
+
+        X_arr = np.asarray(X)
+        y_bb = np.asarray(model.predict(X_arr))
+        y_surr = surrogate.predict(X_arr)
+        original_fidelity = float(accuracy_score(y_bb, y_surr))
+
+        # After removing rules, we can't directly recompute surrogate fidelity
+        # since the tree is unchanged. Instead, we report the theoretical
+        # fidelity on samples that fall into retained leaves.
+        retained_leaf_ids = {r.leaf_id for r in corrected.rules}
+        leaf_assignments = surrogate.apply(X_arr)
+        retained_mask = np.isin(leaf_assignments, list(retained_leaf_ids))
+
+        if retained_mask.sum() > 0:
+            retained_fidelity = float(accuracy_score(
+                y_bb[retained_mask], y_surr[retained_mask],
+            ))
+        else:
+            retained_fidelity = 0.0
+
+        fidelity_impact = retained_fidelity - original_fidelity
+
+    return MonotonicityEnforcementResult(
+        corrected_ruleset=corrected,
+        original_report=report,
+        rules_removed=rules_removed,
+        fidelity_impact=fidelity_impact,
     )

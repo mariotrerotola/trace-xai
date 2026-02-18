@@ -6,7 +6,7 @@ from typing import Optional
 
 import numpy as np
 from numpy.typing import ArrayLike
-from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
+from sklearn.tree import DecisionTreeClassifier
 
 
 class DecisionTreeSurrogate:
@@ -21,18 +21,11 @@ class DecisionTreeSurrogate:
         random_state: int = 42,
     ) -> None:
         self.task = task
-        if task == "regression":
-            self._tree = DecisionTreeRegressor(
-                max_depth=max_depth,
-                min_samples_leaf=min_samples_leaf,
-                random_state=random_state,
-            )
-        else:
-            self._tree = DecisionTreeClassifier(
-                max_depth=max_depth,
-                min_samples_leaf=min_samples_leaf,
-                random_state=random_state,
-            )
+        self._tree = DecisionTreeClassifier(
+            max_depth=max_depth,
+            min_samples_leaf=min_samples_leaf,
+            random_state=random_state,
+        )
 
     def fit(self, X: ArrayLike, y: np.ndarray) -> DecisionTreeSurrogate:
         self._tree.fit(X, y)

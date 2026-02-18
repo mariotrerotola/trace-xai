@@ -108,7 +108,6 @@ def prune_ruleset(
                 samples=rule.samples,
                 confidence=rule.confidence,
                 leaf_id=rule.leaf_id,
-                prediction_value=rule.prediction_value,
             )
 
         kept.append(rule)

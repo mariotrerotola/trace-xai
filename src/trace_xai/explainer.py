@@ -8,7 +8,7 @@ from typing import Dict, Optional, Sequence
 import numpy as np
 from numpy.typing import ArrayLike
 from sklearn.model_selection import KFold, StratifiedKFold
-from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
+from sklearn.tree import DecisionTreeClassifier
 
 from .report import (
     CVFidelityReport,
@@ -17,7 +17,6 @@ from .report import (
     StabilityReport,
     compute_bootstrap_ci,
     compute_fidelity_report,
-    compute_regression_fidelity_report,
 )
 from .ruleset import Condition, Rule, RuleSet
 from .visualization import export_dot, plot_surrogate_tree
@@ -53,6 +52,8 @@ class ExplanationResult:
         monotonicity_report=None,
         ensemble_report=None,
         stable_rules=None,
+        counterfactual_report=None,
+        mdl_report=None,
     ) -> None:
         self.rules = rules
         self.report = report
@@ -66,6 +67,8 @@ class ExplanationResult:
         self.monotonicity_report = monotonicity_report
         self.ensemble_report = ensemble_report
         self.stable_rules = stable_rules
+        self.counterfactual_report = counterfactual_report
+        self.mdl_report = mdl_report
 
     # ------------------------------------------------------------------
     # Convenience methods
@@ -106,6 +109,10 @@ class ExplanationResult:
             parts += ["", str(self.monotonicity_report)]
         if self.ensemble_report is not None:
             parts += ["", str(self.ensemble_report)]
+        if self.counterfactual_report is not None:
+            parts += ["", str(self.counterfactual_report)]
+        if self.mdl_report is not None:
+            parts += ["", str(self.mdl_report)]
         return "\n".join(parts)
 
 
@@ -119,11 +126,7 @@ class Explainer:
     feature_names : sequence of str
         Human-readable feature names (length must match ``X.shape[1]``).
     class_names : sequence of str or None
-        Human-readable class names. Required for classification, omit for
-        regression (or set ``task="regression"``).
-    task : str or None
-        ``"classification"`` or ``"regression"``.  If *None*, auto-detected:
-        classification when *class_names* is provided, regression otherwise.
+        Human-readable class names.
     """
 
     def __init__(
@@ -141,18 +144,7 @@ class Explainer:
             )
         self.model = model
         self.feature_names = tuple(feature_names)
-
-        # Auto-detect task
-        if task is not None:
-            if task not in ("classification", "regression"):
-                raise ValueError(
-                    f"task must be 'classification' or 'regression', got {task!r}"
-                )
-            self._task = task
-        elif class_names is not None:
-            self._task = "classification"
-        else:
-            self._task = "regression"
+        self._task = "classification"
 
         self.class_names: Optional[tuple[str, ...]]
         if class_names is not None:
@@ -178,6 +170,14 @@ class Explainer:
         y_val: Optional[ArrayLike] = None,
         validation_split: Optional[float] = None,
         surrogate_type: str = "decision_tree",
+        augmentation: Optional[str] = None,
+        augmentation_kwargs: Optional[dict] = None,
+        preset: Optional[str] = None,
+        counterfactual_validity_threshold: Optional[float] = None,
+        counterfactual_noise_scale: float = 0.01,
+        counterfactual_n_probes: int = 20,
+        mdl_selection: Optional[str] = None,
+        mdl_precision_bits: int = 16,
     ) -> ExplanationResult:
         """Extract interpretable rules from the black-box model.
 
@@ -205,16 +205,35 @@ class Explainer:
         validation_split : float, optional
             If given (0 < value < 1), split *X* internally for hold-out
             evaluation.  Mutually exclusive with *X_val*.
+        surrogate_type : str, default "decision_tree"
+            Type of surrogate: ``"decision_tree"`` or ``"oblique_tree"``.
+        augmentation : str, optional
+            Data augmentation strategy: ``"perturbation"``, ``"boundary"``,
+            ``"sparse"``, or ``"combined"``. If None, no augmentation.
+        augmentation_kwargs : dict, optional
+            Extra keyword arguments for the augmentation function.
+        preset : str, optional
+            Hyperparameter preset name (``"interpretable"``, ``"balanced"``,
+            ``"faithful"``). Overrides max_depth, min_samples_leaf, ccp_alpha.
 
         Returns
         -------
         ExplanationResult
         """
-        if surrogate_type != "decision_tree":
+        _supported_surrogates = ("decision_tree", "oblique_tree", "sparse_oblique_tree")
+        if surrogate_type not in _supported_surrogates:
             raise ValueError(
-                f"Only 'decision_tree' surrogate is currently supported, "
-                f"got {surrogate_type!r}. See surrogates/ package for placeholders."
+                f"Supported surrogates: {_supported_surrogates}, "
+                f"got {surrogate_type!r}."
             )
+
+        # Apply preset if given
+        if preset is not None:
+            from .hyperparams import get_preset
+            p = get_preset(preset)
+            max_depth = p.max_depth
+            min_samples_leaf = p.min_samples_leaf
+            ccp_alpha = p.ccp_alpha
 
         if X_val is not None and validation_split is not None:
             raise ValueError(
@@ -253,8 +272,28 @@ class Explainer:
         # 1. Black-box predictions (on training portion)
         y_bb = np.asarray(self.model.predict(X_train))
 
+        # 1b. Data augmentation (query synthesis)
+        if augmentation is not None:
+            from .augmentation import augment_data
+            aug_kw = augmentation_kwargs or {}
+            # First pass: train a preliminary surrogate for boundary/sparse strategies
+            if augmentation in ("boundary", "sparse", "combined"):
+                prelim = self._build_surrogate(
+                    max_depth=max_depth, min_samples_leaf=min_samples_leaf,
+                )
+                prelim.fit(X_train, y_bb)
+                X_train, y_bb = augment_data(
+                    X_train, self.model, prelim,
+                    strategy=augmentation, **aug_kw,
+                )
+            else:
+                X_train, y_bb = augment_data(
+                    X_train, self.model, strategy=augmentation, **aug_kw,
+                )
+            # Synthetic samples have no true labels
+            y_train_true = None
+
         # 2. Train surrogate
-        is_regression = self._task == "regression"
         monotonic_cst = None
         if monotonic_constraints is not None:
             from .monotonicity import check_sklearn_monotonic_support, constraints_to_array
@@ -265,17 +304,43 @@ class Explainer:
                 )
             monotonic_cst = constraints_to_array(monotonic_constraints, self.feature_names)
 
-        surrogate = self._build_surrogate(
-            is_regression,
-            max_depth=max_depth,
-            min_samples_leaf=min_samples_leaf,
-            ccp_alpha=ccp_alpha,
-            monotonic_cst=monotonic_cst,
-        )
-        surrogate.fit(X_train, y_bb)
+        if surrogate_type == "oblique_tree":
+            from .surrogates.oblique_tree import ObliqueTreeSurrogate
+            surrogate = ObliqueTreeSurrogate(
+                task=self._task,
+                max_depth=max_depth,
+                min_samples_leaf=min_samples_leaf,
+                random_state=42,
+            )
+            surrogate.fit(X_train, y_bb)
+        elif surrogate_type == "sparse_oblique_tree":
+            from .surrogates.sparse_oblique_tree import SparseObliqueTreeSurrogate
+            surrogate = SparseObliqueTreeSurrogate(
+                task=self._task,
+                max_depth=max_depth,
+                min_samples_leaf=min_samples_leaf,
+                random_state=42,
+            )
+            surrogate.fit(X_train, y_bb, model=self.model, feature_names=self.feature_names)
+        else:
+            surrogate = self._build_surrogate(
+                max_depth=max_depth,
+                min_samples_leaf=min_samples_leaf,
+                ccp_alpha=ccp_alpha,
+                monotonic_cst=monotonic_cst,
+            )
+            surrogate.fit(X_train, y_bb)
 
         # 3. Extract rules via DFS
-        rules = self._extract_rules_from_tree(surrogate, is_regression=is_regression)
+        if surrogate_type in ("oblique_tree", "sparse_oblique_tree"):
+            # Use augmented feature names for oblique/sparse-oblique trees
+            aug_names = surrogate.get_augmented_feature_names(self.feature_names)
+            rules = self._extract_rules_from_tree(
+                surrogate,
+                feature_names_override=aug_names,
+            )
+        else:
+            rules = self._extract_rules_from_tree(surrogate)
         ruleset = RuleSet(
             rules=tuple(rules),
             feature_names=self.feature_names,
@@ -294,6 +359,32 @@ class Explainer:
         if pruning is not None:
             from .pruning import prune_ruleset
             pruned_rules, pruning_report = prune_ruleset(ruleset, pruning)
+
+        # 3d. Counterfactual validity scoring
+        cf_report = None
+        if counterfactual_validity_threshold is not None:
+            from .counterfactual import score_rules_counterfactual
+            cf_report = score_rules_counterfactual(
+                ruleset, self.model, X_train,
+                validity_threshold=counterfactual_validity_threshold,
+                noise_scale=counterfactual_noise_scale,
+                n_probes=counterfactual_n_probes,
+            )
+            if cf_report.filtered_ruleset is not None:
+                ruleset = cf_report.filtered_ruleset
+
+        # 3e. MDL-based rule selection
+        mdl_report = None
+        if mdl_selection is not None:
+            from .mdl_selection import select_rules_mdl
+            n_cls = len(self.class_names) if self.class_names else 1
+            mdl_report = select_rules_mdl(
+                ruleset, self.model, X_train,
+                n_classes=n_cls,
+                precision_bits=mdl_precision_bits,
+                method=mdl_selection,
+            )
+            ruleset = mdl_report.selected_ruleset
 
         # Shared kwargs for report builders
         report_kwargs = dict(
@@ -332,6 +423,8 @@ class Explainer:
             pruned_rules=pruned_rules,
             pruning_report=pruning_report,
             monotonicity_report=mono_report,
+            counterfactual_report=cf_report,
+            mdl_report=mdl_report,
         )
 
     def cross_validate_fidelity(
@@ -368,16 +461,14 @@ class Explainer:
 
             y_bb_tr = np.asarray(self.model.predict(X_tr))
 
-            is_regression = self._task == "regression"
             surr = self._build_surrogate(
-                is_regression,
                 max_depth=max_depth,
                 min_samples_leaf=min_samples_leaf,
                 random_state=random_state,
             )
             surr.fit(X_tr, y_bb_tr)
 
-            rules = self._extract_rules_from_tree(surr, is_regression=is_regression)
+            rules = self._extract_rules_from_tree(surr)
             ruleset = RuleSet(
                 rules=tuple(rules),
                 feature_names=self.feature_names,
@@ -428,7 +519,6 @@ class Explainer:
         rng = np.random.RandomState(random_state)
 
         signatures: list[frozenset] = []
-        is_regression = self._task == "regression"
 
         for _ in range(n_bootstraps):
             idx = rng.choice(len(X), size=len(X), replace=True)
@@ -436,14 +526,13 @@ class Explainer:
             y_bb_boot = np.asarray(self.model.predict(X_boot))
 
             surr = self._build_surrogate(
-                is_regression,
                 max_depth=max_depth,
                 min_samples_leaf=min_samples_leaf,
                 random_state=random_state,
             )
             surr.fit(X_boot, y_bb_boot)
 
-            rules = self._extract_rules_from_tree(surr, is_regression=is_regression)
+            rules = self._extract_rules_from_tree(surr)
             ruleset = RuleSet(
                 rules=tuple(rules),
                 feature_names=self.feature_names,
@@ -484,7 +573,7 @@ class Explainer:
 
         Returns a dict with keys ``"fidelity"`` and optionally ``"accuracy"``.
         """
-        from sklearn.metrics import accuracy_score, r2_score
+        from sklearn.metrics import accuracy_score
 
         X = np.asarray(X)
         y_true = np.asarray(y) if y is not None else None
@@ -493,23 +582,15 @@ class Explainer:
         y_bb = np.asarray(self.model.predict(X))
         y_surr = result.surrogate.predict(X)
 
-        is_regression = self._task == "regression"
-
         fidelities: list[float] = []
         accuracies: list[float] = []
 
         for _ in range(n_bootstraps):
             idx = rng.choice(len(X), size=len(X), replace=True)
-            if is_regression:
-                fid = float(r2_score(y_bb[idx], y_surr[idx]))
-            else:
-                fid = float(accuracy_score(y_bb[idx], y_surr[idx]))
+            fid = float(accuracy_score(y_bb[idx], y_surr[idx]))
             fidelities.append(fid)
             if y_true is not None:
-                if is_regression:
-                    acc = float(r2_score(y_true[idx], y_surr[idx]))
-                else:
-                    acc = float(accuracy_score(y_true[idx], y_surr[idx]))
+                acc = float(accuracy_score(y_true[idx], y_surr[idx]))
                 accuracies.append(acc)
 
         out: Dict[str, ConfidenceInterval] = {}
@@ -590,7 +671,6 @@ class Explainer:
         # Black-box predictions
         y_bb = np.asarray(self.model.predict(X))
 
-        is_regression = self._task == "regression"
         monotonic_cst = None
         if monotonic_constraints is not None:
             from .monotonicity import check_sklearn_monotonic_support, constraints_to_array
@@ -609,7 +689,6 @@ class Explainer:
             y_bb_boot = y_bb[idx]
 
             surr = self._build_surrogate(
-                is_regression,
                 max_depth=max_depth,
                 min_samples_leaf=min_samples_leaf,
                 ccp_alpha=ccp_alpha,
@@ -618,7 +697,7 @@ class Explainer:
             )
             surr.fit(X_boot, y_bb_boot)
 
-            rules = self._extract_rules_from_tree(surr, is_regression=is_regression)
+            rules = self._extract_rules_from_tree(surr)
             bootstrap_rulesets.append(RuleSet(
                 rules=tuple(rules),
                 feature_names=self.feature_names,
@@ -641,7 +720,6 @@ class Explainer:
         # Build a report using one of the surrogates (the last one)
         # on the full data for metrics
         surr_final = self._build_surrogate(
-            is_regression,
             max_depth=max_depth,
             min_samples_leaf=min_samples_leaf,
             ccp_alpha=ccp_alpha,
@@ -680,13 +758,195 @@ class Explainer:
             stable_rules=stable_rules,
         )
 
+    def auto_select_depth(
+        self,
+        X: ArrayLike,
+        *,
+        y: Optional[ArrayLike] = None,
+        target_fidelity: float = 0.85,
+        min_depth: int = 2,
+        max_depth: int = 10,
+        n_folds: int = 5,
+        min_samples_leaf: int = 5,
+        random_state: int = 42,
+    ):
+        """Automatically select minimum tree depth achieving target fidelity.
+
+        Delegates to :func:`hyperparams.auto_select_depth`.
+
+        Returns
+        -------
+        AutoDepthResult
+        """
+        from .hyperparams import auto_select_depth
+        return auto_select_depth(
+            self, X, y=y, target_fidelity=target_fidelity,
+            min_depth=min_depth, max_depth=max_depth,
+            n_folds=n_folds, min_samples_leaf=min_samples_leaf,
+            random_state=random_state,
+        )
+
+    def compute_structural_stability(
+        self,
+        X: ArrayLike,
+        *,
+        n_bootstraps: int = 20,
+        max_depth: int = 5,
+        min_samples_leaf: int = 5,
+        top_k: int = 3,
+        random_state: int = 42,
+    ):
+        """Compute structural stability (coverage overlap, feature rank stability).
+
+        Delegates to :func:`stability.compute_structural_stability`.
+
+        Returns
+        -------
+        StructuralStabilityReport
+        """
+        from .stability import compute_structural_stability
+        return compute_structural_stability(
+            self, X, n_bootstraps=n_bootstraps, max_depth=max_depth,
+            min_samples_leaf=min_samples_leaf, top_k=top_k,
+            random_state=random_state,
+        )
+
+    def compute_complementary_metrics(
+        self,
+        result: ExplanationResult,
+        X: ArrayLike,
+    ):
+        """Compute metrics beyond standard fidelity.
+
+        Delegates to :func:`metrics.compute_complementary_metrics`.
+
+        Returns
+        -------
+        ComplementaryMetrics
+        """
+        from .metrics import compute_complementary_metrics
+        return compute_complementary_metrics(
+            result.surrogate, self.model, X, result.rules,
+            class_names=self.class_names or (),
+        )
+
+    def compute_fidelity_bounds(
+        self,
+        result: ExplanationResult,
+        *,
+        delta: float = 0.05,
+    ):
+        """Compute theoretical PAC/VC/Rademacher fidelity bounds.
+
+        Delegates to :func:`theoretical_bounds.compute_fidelity_bounds`.
+
+        Parameters
+        ----------
+        result : ExplanationResult
+            Output from :meth:`extract_rules`.
+        delta : float
+            Failure probability (bounds hold with prob >= 1 - delta).
+
+        Returns
+        -------
+        FidelityBound
+        """
+        from .theoretical_bounds import compute_fidelity_bounds
+        empirical_infidelity = 1.0 - result.report.fidelity
+        return compute_fidelity_bounds(
+            depth=result.report.surrogate_depth,
+            n_features=len(result._feature_names),
+            n_samples=result.report.num_samples,
+            empirical_infidelity=empirical_infidelity,
+            delta=delta,
+        )
+
+    def score_rules_counterfactual(
+        self,
+        result: ExplanationResult,
+        X: ArrayLike,
+        *,
+        validity_threshold: Optional[float] = None,
+        noise_scale: float = 0.01,
+        n_probes: int = 20,
+        random_state: int = 42,
+    ):
+        """Score extracted rules by counterfactual validity.
+
+        For each rule condition, probes whether the black-box model also
+        changes its prediction at the surrogate's decision boundary.
+
+        Returns
+        -------
+        CounterfactualReport
+        """
+        from .counterfactual import score_rules_counterfactual as _score
+
+        return _score(
+            result.rules, self.model, np.asarray(X),
+            validity_threshold=validity_threshold,
+            noise_scale=noise_scale,
+            n_probes=n_probes,
+            random_state=random_state,
+        )
+
+    def select_rules_mdl(
+        self,
+        result: ExplanationResult,
+        X: ArrayLike,
+        *,
+        method: str = "forward",
+        precision_bits: int = 16,
+    ):
+        """Select an optimal subset of rules using the MDL principle.
+
+        Minimises L(model) + L(data | model) over the extracted rules.
+
+        Returns
+        -------
+        MDLSelectionReport
+        """
+        from .mdl_selection import select_rules_mdl as _select
+
+        n_cls = len(self.class_names) if self.class_names else 1
+        return _select(
+            result.rules, self.model, np.asarray(X),
+            n_classes=n_cls,
+            precision_bits=precision_bits,
+            method=method,
+        )
+
+    def sensitivity_analysis(
+        self,
+        X: ArrayLike,
+        *,
+        y: Optional[ArrayLike] = None,
+        depth_range: Sequence[int] = (3, 5, 7),
+        min_samples_leaf_range: Sequence[int] = (5, 10, 20),
+        n_folds: int = 3,
+        random_state: int = 42,
+    ):
+        """Grid search over hyperparameters.
+
+        Delegates to :func:`hyperparams.sensitivity_analysis`.
+
+        Returns
+        -------
+        SensitivityResult
+        """
+        from .hyperparams import sensitivity_analysis
+        return sensitivity_analysis(
+            self, X, y=y, depth_range=depth_range,
+            min_samples_leaf_range=min_samples_leaf_range,
+            n_folds=n_folds, random_state=random_state,
+        )
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
     @staticmethod
     def _build_surrogate(
-        is_regression: bool,
         *,
         max_depth: int = 5,
         min_samples_leaf: int = 5,
@@ -703,8 +963,6 @@ class Explainer:
         )
         if monotonic_cst is not None:
             kwargs["monotonic_cst"] = monotonic_cst
-        if is_regression:
-            return DecisionTreeRegressor(**kwargs)
         return DecisionTreeClassifier(**kwargs)
 
     def _build_report(
@@ -719,20 +977,7 @@ class Explainer:
         avg_conditions_per_feature: Optional[float] = None,
         interaction_strength: Optional[float] = None,
     ) -> FidelityReport:
-        """Build a FidelityReport for either classification or regression."""
-        if self._task == "regression":
-            return compute_regression_fidelity_report(
-                surrogate=surrogate,
-                X=X,
-                y_bb=y_bb,
-                y_true=y_true,
-                num_rules=ruleset.num_rules,
-                avg_rule_length=ruleset.avg_conditions,
-                max_rule_length=ruleset.max_conditions,
-                evaluation_type=evaluation_type,
-                avg_conditions_per_feature=avg_conditions_per_feature,
-                interaction_strength=interaction_strength,
-            )
+        """Build a FidelityReport for classification."""
         return compute_fidelity_report(
             surrogate=surrogate,
             X=X,
@@ -748,7 +993,8 @@ class Explainer:
         )
 
     def _extract_rules_from_tree(
-        self, tree, *, is_regression: bool = False,
+        self, tree, *,
+        feature_names_override: Optional[tuple[str, ...]] = None,
     ) -> list[Rule]:
         """Depth-first walk over the sklearn tree internals."""
         tree_ = tree.tree_
@@ -756,58 +1002,42 @@ class Explainer:
         threshold = tree_.threshold
         children_left = tree_.children_left
         children_right = tree_.children_right
-        value = tree_.value  # shape (n_nodes, 1, n_classes) or (n_nodes, 1, 1)
+        value = tree_.value  # shape (n_nodes, 1, n_classes)
 
+        feat_names = feature_names_override or self.feature_names
         class_names = self.class_names or ()
         rules: list[Rule] = []
 
         def _dfs(node_id: int, conditions: list[Condition]) -> None:
             # Leaf node
             if children_left[node_id] == children_right[node_id]:
-                if is_regression:
-                    pred_value = float(value[node_id, 0, 0])
-                    total = int(tree_.n_node_samples[node_id])
-                    rules.append(
-                        Rule(
-                            conditions=tuple(conditions),
-                            prediction=f"{pred_value:.4f}",
-                            samples=total,
-                            confidence=1.0,
-                            leaf_id=node_id,
-                            prediction_value=pred_value,
-                        )
+                class_counts = value[node_id, 0]
+                predicted_class = int(np.argmax(class_counts))
+
+                real_total = int(tree_.n_node_samples[node_id])
+
+                weight_total = class_counts.sum()
+                confidence = float(class_counts[predicted_class] / weight_total) if weight_total > 0 else 0.0
+
+                class_name = (
+                    class_names[predicted_class]
+                    if predicted_class < len(class_names)
+                    else str(predicted_class)
+                )
+                rules.append(
+                    Rule(
+                        conditions=tuple(conditions),
+                        prediction=class_name,
+                        samples=real_total,
+                        confidence=confidence,
+                        leaf_id=node_id,
                     )
-                else:
-                    class_counts = value[node_id, 0]
-                    predicted_class = int(np.argmax(class_counts))
-                    
-                    # Use n_node_samples for the actual sample count (count of rows)
-                    # explicitly, as 'value' might be weighted or behave effectively normalized
-                    real_total = int(tree_.n_node_samples[node_id])
-                    
-                    # Use class_counts sum for confidence calculation to respect weights/distribution
-                    weight_total = class_counts.sum()
-                    confidence = float(class_counts[predicted_class] / weight_total) if weight_total > 0 else 0.0
-                    
-                    class_name = (
-                        class_names[predicted_class]
-                        if predicted_class < len(class_names)
-                        else str(predicted_class)
-                    )
-                    rules.append(
-                        Rule(
-                            conditions=tuple(conditions),
-                            prediction=class_name,
-                            samples=real_total,
-                            confidence=confidence,
-                            leaf_id=node_id,
-                        )
-                    )
+                )
                 return
 
             feat_name = (
-                self.feature_names[feature[node_id]]
-                if feature[node_id] < len(self.feature_names)
+                feat_names[feature[node_id]]
+                if feature[node_id] < len(feat_names)
                 else f"feature_{feature[node_id]}"
             )
             thresh = float(threshold[node_id])

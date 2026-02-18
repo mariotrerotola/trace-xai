@@ -3,7 +3,19 @@
     "allow": [
       "WebSearch",
       "Bash(python:*)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(wc:*)",
+      "WebFetch(domain:arxiv.org)",
+      "WebFetch(domain:jmlr.org)",
+      "WebFetch(domain:www.researchgate.net)",
+      "WebFetch(domain:www.cis.upenn.edu)",
+      "WebFetch(domain:proceedings.mlr.press)",
+      "WebFetch(domain:en.wikipedia.org)",
+      "WebFetch(domain:gradml.mit.edu)",
+      "WebFetch(domain:www.cs.cmu.edu)",
+      "Bash(pdflatex:*)",
+      "Bash(python3:*)",
+      "Bash(ls:*)"
     ]
   }
 }

@@ -1,0 +1,1069 @@
+\documentclass[11pt]{article}
+
+% --- Packages ---
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage[expansion=false]{microtype}
+\usepackage{hyperref}
+\usepackage[nameinlink,noabbrev]{cleveref}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{xcolor}
+\usepackage{natbib}
+\usepackage[margin=1in]{geometry}
+\usepackage{caption}
+\usepackage{enumitem}
+\usepackage{multirow}
+\usepackage{url}
+\usepackage{mathtools}
+\usepackage{subcaption}
+\usepackage{thmtools}
+
+% --- Hyperref setup ---
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  citecolor=blue!50!black,
+  urlcolor=blue!50!black,
+  pdfauthor={Mario Trerotola},
+  pdftitle={TRACE: Tree-based Rule Approximation for Comprehensible Explanations}
+}
+
+% --- Theorem environments ---
+\newtheorem{definition}{Definition}
+\newtheorem{proposition}{Proposition}
+\newtheorem{remark}{Remark}
+\newtheorem{corollary}{Corollary}
+
+% --- Custom commands ---
+\newcommand{\trace}{\textsc{Trace}}
+\newcommand{\fidacc}{\mathrm{FidAcc}}
+\newcommand{\indicator}{\mathbb{1}}
+\newcommand{\reals}{\mathbb{R}}
+
+% ============================================================
+\title{\textbf{TRACE: Tree-based Rule Approximation for Comprehensible Explanations}\\[6pt]
+\large A Model-Agnostic Framework for Global Rule Extraction\\with Statistical Validation and Regulatory Compliance}
+
+\author{
+  Mario Trerotola\thanks{Correspondence: \texttt{mario.trerotola@email.com}.
+  Source code: \url{https://github.com/mariotrerotola/trace-xai}.}\\[4pt]
+  {\normalsize Department of [Department Name], [University/Institution]}\\
+  {\normalsize [City], [Country]}
+}
+
+\date{}
+
+\begin{document}
+\maketitle
+
+% ============================================================
+\begin{abstract}
+\noindent
+Complex machine learning models deployed in high-stakes domains demand transparent, human-readable explanations that satisfy both end-user comprehension and regulatory audit requirements.
+We introduce \trace{} (\textbf{T}ree-based \textbf{R}ule \textbf{A}pproximation for \textbf{C}omprehensible \textbf{E}xplanations), a model-agnostic framework that distills any black-box predictor into a compact set of IF--THEN rules via surrogate decision trees.
+\trace{} makes the following contributions:
+(i)~a rigorous fidelity evaluation protocol supporting hold-out, cross-validation, and percentile bootstrap confidence intervals;
+(ii)~a fuzzy-signature Jaccard stability metric that quantifies rule robustness under data perturbation;
+(iii)~an ensemble formulation that identifies high-frequency, stable rules across bootstrap surrogates through fuzzy-signature matching;
+(iv)~\textbf{counterfactual rule scoring}, a multi-probe boundary verification algorithm that distinguishes genuine black-box decision boundaries from ``phantom splits'' introduced by the surrogate, addressing the fundamental limitation of surrogate-based explainers;
+(v)~\textbf{MDL-based rule selection}, an information-theoretic criterion grounded in the Minimum Description Length principle~\citep{rissanen1978modeling} that selects rules by minimising the total description length $L(\text{model}) + L(\text{data}\mid\text{model})$, replacing ad-hoc frequency-based filtering; and
+(vi)~integrated post-hoc regulatory compliance tools, including monotonicity constraint validation, configurable rule pruning, data augmentation, and automatic depth selection with PAC-learning bounds.
+Experiments on three benchmark classification datasets with three black-box models (Random Forest, XGBoost, MLP) demonstrate that \trace{} achieves high fidelity (accuracy $> 0.90$) with compact rule sets. Counterfactual scoring reveals that surrogates contain 8--68\% phantom splits (mean validity 0.59); Random Forest black-boxes produce the most phantoms (validity 0.32--0.45), providing a novel diagnostic of model--surrogate misalignment. MDL selection compresses rule sets by up to 97\% (e.g., 60~$\to$~2 rules on COMPAS, 35~$\to$~4 on Adult). On an income prediction audit using the Adult Census dataset ($n \approx 45{,}000$), the full pipeline produces 3 human-readable rules maintaining 91\% fidelity, 98.7\% structural stability, and full monotonicity compliance.
+\end{abstract}
+
+\noindent\textbf{Keywords:} explainable AI $\cdot$ rule extraction $\cdot$ surrogate models $\cdot$ decision trees $\cdot$ fidelity $\cdot$ stability $\cdot$ counterfactual $\cdot$ minimum description length $\cdot$ regulatory compliance
+
+\bigskip
+
+
+% ============================================================
+\section{Introduction}
+\label{sec:introduction}
+% ============================================================
+
+The widespread deployment of complex machine learning models---including ensemble methods, deep neural networks, and gradient-boosted trees---has amplified the tension between predictive performance and human understanding~\citep{arrieta2020xai}. In domains where decisions carry substantial consequences, such as medical diagnosis, credit scoring, and recidivism prediction, stakeholders increasingly demand not only \textit{what} a model predicts but also \textit{why}~\citep{rudin2019stop}. This need is no longer merely academic: it has been codified in regulatory instruments with concrete legal force.
+
+The European Union's Artificial Intelligence Act (Regulation~2024/1689) mandates that high-risk AI systems be ``sufficiently transparent'' for deployers to ``interpret the system's output and use it appropriately'' (Article~13), with specific provisions for explanations of automated decisions (Article~86). Analogous requirements appear in the General Data Protection Regulation (Article~22, right not to be subject to solely automated decision-making) and in sector-specific guidance across finance and healthcare~\citep{eu2024aiact}. These regulatory frameworks create an urgent practical need for explanation methods that produce auditable, human-readable decision logic---not merely numeric scores or visual saliency maps.
+
+The explainable AI (XAI) literature offers a rich but fragmented ecosystem of post-hoc methods, each embodying distinct design choices along several fundamental axes: \emph{scope} (local vs.\ global), \emph{output format} (numeric attributions vs.\ symbolic rules), \emph{model access} (model-agnostic vs.\ model-specific), and \emph{statistical rigor} (presence or absence of uncertainty quantification). SHAP~\citep{lundberg2017unified} provides Shapley-value feature attributions grounded in cooperative game theory; LIME~\citep{ribeiro2016why} fits local linear surrogates in perturbed neighborhoods; Contextual Importance and Utility (CIU)~\citep{framling2020ciu} decomposes predictions into context-dependent importance and utility scores without constructing any intermediate model; gradient-based methods such as Integrated Gradients~\citep{sundararajan2017axiomatic} and Grad-CAM~\citep{selvaraju2017gradcam} target differentiable architectures. On the rule-extraction side, decompositional methods like DEXiRE~\citep{contreras2022dexire} open the black box by binarizing hidden layers of neural networks to induce propositional rules, while pedagogical methods like Anchors~\citep{ribeiro2018anchors} and CORELS~\citep{angelino2017learning} produce symbolic rules by treating the model as an oracle.
+
+Despite this methodological diversity, no existing method simultaneously satisfies five requirements that we argue are essential for regulated, high-stakes deployment:
+\begin{enumerate}[leftmargin=*,label=(\roman*)]
+    \item model-agnostic applicability to arbitrary predictor architectures,
+    \item global symbolic rules suitable for regulatory audit and documentation,
+    \item formal stability quantification measuring rule robustness under data perturbation,
+    \item bootstrap-calibrated uncertainty estimates providing confidence intervals on fidelity metrics, and
+    \item integrated regulatory compliance tools for constraint enforcement and validation.
+\end{enumerate}
+
+We present \trace{} (Tree-based Rule Approximation for Comprehensible Explanations), a framework that addresses this gap. The core insight underlying \trace{} is that a single surrogate tree, while useful, provides an incomplete picture: it captures one possible approximation of the black-box decision boundary, but offers no indication of whether this approximation is stable or idiosyncratic. By fitting multiple surrogates on bootstrap resamples and analyzing the frequency and consistency of extracted rules, \trace{} transforms rule extraction from a point estimate into a distributional analysis, identifying which aspects of the model's behavior are robustly captured and which are artifacts of specific data configurations. Concretely, \trace{} makes the following contributions:
+
+\begin{enumerate}[leftmargin=*,label=\textbf{C\arabic*.}]
+    \item A complete pipeline for extracting human-readable IF--THEN rules from any model exposing a \texttt{predict()} interface, with optional data augmentation and automatic surrogate depth selection (\Cref{sec:method}).
+    \item A multi-faceted evaluation protocol encompassing fidelity, complexity, stability, bootstrap confidence intervals, and PAC-learning fidelity bounds (\Cref{sec:evaluation}).
+    \item An ensemble bagging mechanism with fuzzy-signature matching for identifying stable, high-frequency rules that are robust to data perturbation (\Cref{sec:ensemble}).
+    \item \textbf{Counterfactual rule scoring}: a multi-probe boundary verification algorithm that tests whether each surrogate split corresponds to a genuine black-box decision boundary, identifying ``phantom splits'' that the black-box ignores (\Cref{sec:counterfactual}).
+    \item \textbf{MDL-based rule selection}: an information-theoretic criterion that selects rules by minimising total description length, replacing ad-hoc frequency-based filtering with a principled compression-based objective (\Cref{sec:mdl}).
+    \item Post-hoc regulatory compliance tools---configurable rule pruning and monotonicity constraint validation---designed for deployment in regulated sectors (\Cref{sec:regulatory}).
+    \item Empirical evaluation of the full CF+MDL pipeline on three benchmark classification datasets with three black-box models (9 combinations), revealing systematic patterns in phantom split prevalence across model types, plus a detailed income prediction audit scenario (\Cref{sec:experiments}).
+\end{enumerate}
+
+
+% ============================================================
+\section{Related Work}
+\label{sec:related}
+% ============================================================
+
+We organize the review along three dimensions---\emph{explanation scope and format}, \emph{model access requirements}, and \emph{statistical rigor}---and position \trace{} relative to representative methods from each category. \Cref{tab:comparison} provides a synthetic overview.
+
+% ----------------------------------------------------------
+\subsection{Feature Attribution Methods}
+\label{sec:related:attribution}
+
+Feature attribution methods assign numeric importance scores to input features for individual predictions. They constitute the dominant paradigm in current XAI practice but differ markedly in their theoretical foundations and operational properties.
+
+\paragraph{SHAP.}
+SHAP~\citep{lundberg2017unified} grounds feature attributions in Shapley values~\citep{shapley1953value}, the unique allocation satisfying efficiency, symmetry, linearity, and the null-player axiom. TreeSHAP~\citep{lundberg2020local} provides exact polynomial-time computation for tree ensembles. While SHAP offers strong axiomatic guarantees, it produces \emph{numeric scores per instance}, not symbolic rules. Global summaries (e.g., mean absolute SHAP values) require aggregation across instances, which introduces additional approximation and does not yield the auditable decision logic required for regulatory compliance. Furthermore, SHAP does not include built-in procedures for quantifying the stability of its attributions under data perturbation, though external analyses have shown that Shapley values can be sensitive to background data choices~\citep{krishna2022disagreement}.
+
+\paragraph{LIME.}
+LIME~\citep{ribeiro2016why} fits sparse linear models in perturbed neighborhoods around each instance. It is model-agnostic and produces interpretable local explanations; however, \citet{alvarez2018robustness} demonstrated that small input perturbations can dramatically alter LIME explanations, raising serious concerns about reliability. More fundamentally, LIME is inherently local: aggregating LIME explanations into a coherent global model description remains an open problem.
+
+\paragraph{CIU.}
+Contextual Importance and Utility~\citep{framling1996, framling2020ciu} adopts a fundamentally different approach. CIU decomposes a prediction into two orthogonal dimensions: \emph{Contextual Importance} (CI), measuring the extent to which varying feature~$x_i$ can affect the output in the current context, and \emph{Contextual Utility} (CU), measuring how favorable the current value of~$x_i$ is relative to the achievable output range:
+\begin{equation}
+\label{eq:ciu-ci}
+    \mathrm{CI}_j(\vec{C}, \{i\}) = \frac{C_{\max_j}(\vec{C}, \{i\}) - C_{\min_j}(\vec{C}, \{i\})}{\mathrm{absmax}_j - \mathrm{absmin}_j},
+\end{equation}
+\begin{equation}
+\label{eq:ciu-cu}
+    \mathrm{CU}_j(\vec{C}, \{i\}) = \frac{y_j(\vec{C}) - C_{\min_j}(\vec{C}, \{i\})}{C_{\max_j}(\vec{C}, \{i\}) - C_{\min_j}(\vec{C}, \{i\})}.
+\end{equation}
+A distinctive strength of CIU is its native support for \emph{Intermediate Concepts}, enabling hierarchical explanations at multiple levels of abstraction using domain-specific vocabularies~\citep{framling2020ciu}. This makes CIU particularly suited for decision support systems where different stakeholders require explanations at different granularity levels. However, CIU shares a fundamental limitation with SHAP and LIME for regulatory purposes: it produces \emph{numeric scores} rather than symbolic rules, and it does not include formal mechanisms for quantifying stability or providing confidence intervals.
+
+\paragraph{Gradient-based methods.}
+Integrated Gradients~\citep{sundararajan2017axiomatic} and Grad-CAM~\citep{selvaraju2017gradcam} provide computationally efficient attributions for differentiable models. However, \citet{adebayo2018sanity} demonstrated that some gradient methods are insensitive to model randomization, and these methods are inherently model-specific and produce numeric saliency maps rather than symbolic rules.
+
+% ----------------------------------------------------------
+\subsection{Rule Extraction Methods}
+\label{sec:related:rules}
+
+Rule extraction methods produce symbolic IF--THEN logic that can be directly inspected, communicated, and audited---a property we term \emph{audit readiness}.
+
+\paragraph{Model-agnostic pedagogical methods.}
+\citet{craven1996extracting} introduced TREPAN, extracting decision trees from neural networks via oracle-guided splitting. \citet{bastani2017interpreting} formalized model extraction with decision trees and proposed active sampling to improve fidelity on the decision boundary. Anchors~\citep{ribeiro2018anchors} produce high-precision, model-agnostic rules but operate locally---each anchor explains a single prediction, with no principled mechanism for assembling a global rule set. CORELS~\citep{angelino2017learning} finds certifiably optimal rule lists via branch-and-bound, but is restricted to binary features and classification tasks. Bayesian Rule Lists~\citep{letham2015interpretable} learn probabilistic rule sets through Bayesian inference. Born-again trees~\citep{breiman1996born} reconstruct a single tree from an ensemble. Crucially, none of these methods includes built-in bootstrap stability analysis, fuzzy-signature matching, or regulatory compliance tools.
+
+\paragraph{Decompositional methods.}
+Decompositional methods extract rules by inspecting the internal structure of neural networks at the neuron or layer level~\citep{andrews1995survey}. ECLAIRE~\citep{zarlenga2021eclaire} extended decompositional extraction to deep networks by inducing intermediate rule sets between hidden layers and composing them via substitution. DEXiRE~\citep{contreras2022dexire} advanced this line by binarizing hidden-layer activations using hard-tanh, thereby inducing Boolean functions layer by layer. The method proceeds through nine steps: generating predictions, cloning and binarizing hidden layers, extracting binary activations, identifying per-class patterns, inducing and pruning Boolean rule sets, generating feature-level rules, merging through inverse substitution, and evaluation.
+
+DEXiRE demonstrated competitive accuracy and fidelity relative to ECLAIRE, producing shorter rules (up to 74\% fewer terms) and faster execution times. Notably, it produces \emph{activation patterns}---per-class visualizations of the most frequently activated binary neurons---providing mechanistic insight into the network's internal decision process that purely pedagogical methods cannot offer. However, DEXiRE is constrained in several important respects: it requires access to hidden-layer activations, restricting applicability to feedforward neural networks; it does not provide formal stability quantification; and it lacks regulatory compliance tools.
+
+% ----------------------------------------------------------
+\subsection{Stability, Faithfulness, and the Trust Gap}
+\label{sec:related:stability}
+
+The stability and faithfulness of explanations have emerged as critical concerns that directly impact trust in deployed XAI systems. \citet{alvarez2018robustness} showed that small input perturbations can dramatically alter local explanations. \citet{krishna2022disagreement} documented significant disagreement among methods applied to identical instances, raising fundamental questions about which explanation to trust. Faithfulness has been assessed through randomization tests~\citep{adebayo2018sanity}, removal-based benchmarks~\citep{hooker2019benchmark}, and unified frameworks~\citep{agarwal2022openxai, li2023m4}.
+
+Despite this growing body of critical analysis, a striking gap remains: few explanation methods incorporate stability assessment as an \emph{integral} component of the extraction pipeline. Stability is typically evaluated \emph{post hoc} by external researchers, rather than being a first-class output of the method itself. This means that practitioners deploying XAI methods in production have no built-in mechanism for determining whether their explanations are robust or artifacts of a particular data configuration. \trace{} addresses this gap by making stability analysis a core component of the extraction pipeline.
+
+% ----------------------------------------------------------
+\subsection{Counterfactual Explanations}
+\label{sec:related:counterfactual}
+
+Counterfactual methods describe minimal input changes that alter a prediction~\citep{wachter2018counterfactual, mothilal2020explaining}. They address individual recourse rather than global decision logic and are complementary to \trace{}'s rule-level perspective.
+
+\trace{}'s counterfactual \emph{rule scoring} (\Cref{sec:counterfactual}) is conceptually related but serves a different purpose: it uses counterfactual probing to \emph{validate} surrogate split boundaries, not to generate recourse recommendations. The question shifts from ``what should change to alter the prediction?'' to ``does the black-box actually change its prediction at this boundary?''
+
+% ----------------------------------------------------------
+\subsection{Information-Theoretic Rule Selection}
+\label{sec:related:mdl}
+
+The Minimum Description Length (MDL) principle~\citep{rissanen1978modeling, grunwald2007minimum} has been applied to model selection, decision tree pruning, and rule induction~\citep{blumer1989learnability}. \trace{} applies MDL to a novel task: selecting \emph{which extracted rules to retain} from a surrogate. This differs from using MDL during tree construction (which optimises splits) or during direct rule induction (which grows rules from data). \trace{}'s MDL operates post-hoc on rules that have already been extracted, scored for counterfactual validity, and pruned---making it applicable to any surrogate-based explainer, not just decision trees.
+
+% ----------------------------------------------------------
+\subsection{Positioning of \trace{}}
+\label{sec:related:positioning}
+
+\Cref{tab:comparison} synthesizes the positioning of \trace{} relative to the methods reviewed above. The key observation is that existing methods occupy distinct and largely non-overlapping regions of the design space: attribution methods (SHAP, LIME, CIU) provide rich local insight but do not yield global symbolic rules; decompositional methods (DEXiRE, ECLAIRE) produce global rules but are architecture-specific; model-agnostic rule methods (Anchors, CORELS) lack integrated stability analysis and regulatory tools. \trace{} occupies an underserved but practically critical position: model-agnostic global rule extraction with formal statistical validation, counterfactual boundary verification, information-theoretic rule selection, and regulatory compliance capabilities.
+
+\begin{table}[t]
+\centering
+\caption{Comparative positioning of XAI methods along key design dimensions. $\bullet$ = fully supported, $\circ$ = partially supported, --- = not supported.}
+\label{tab:comparison}
+\small
+\begin{tabular}{lccccccc}
+\toprule
+\textbf{Property} & \rotatebox{70}{\textbf{\trace{}}} & \rotatebox{70}{\textbf{SHAP}} & \rotatebox{70}{\textbf{CIU}} & \rotatebox{70}{\textbf{LIME}} & \rotatebox{70}{\textbf{DEXiRE}} & \rotatebox{70}{\textbf{Anchors}} & \rotatebox{70}{\textbf{CORELS}} \\
+\midrule
+Model-agnostic              & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & ---       & $\bullet$ & $\bullet$ \\
+Global explanation           & $\bullet$ & $\circ$   & ---       & ---       & $\bullet$ & ---       & $\bullet$ \\
+Symbolic IF--THEN rules      & $\bullet$ & ---       & ---       & ---       & $\bullet$ & $\bullet$ & $\bullet$ \\
+Multi-level abstraction      & ---       & ---       & $\bullet$ & ---       & ---       & ---       & ---       \\
+Neuron-level insight         & ---       & ---       & ---       & ---       & $\bullet$ & ---       & ---       \\
+Bootstrap CI                 & $\bullet$ & ---       & ---       & ---       & ---       & ---       & ---       \\
+Formal stability metric      & $\bullet$ & ---       & ---       & ---       & ---       & ---       & ---       \\
+Ensemble rule filtering      & $\bullet$ & ---       & ---       & ---       & ---       & ---       & ---       \\
+Counterfactual boundary verification & $\bullet$ & --- & --- & --- & --- & --- & --- \\
+MDL rule selection           & $\bullet$ & ---       & ---       & ---       & ---       & ---       & ---       \\
+PAC fidelity bounds          & $\bullet$ & ---       & ---       & ---       & ---       & ---       & ---       \\
+Data augmentation            & $\bullet$ & ---       & ---       & $\circ$   & ---       & ---       & ---       \\
+Monotonicity validation      & $\bullet$ & ---       & ---       & ---       & ---       & ---       & ---       \\
+Supports classification      & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ \\
+Arbitrary architectures      & $\bullet$ & $\bullet$ & $\bullet$ & $\bullet$ & ---       & $\bullet$ & $\bullet$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ============================================================
+\section{Problem Setting and Notation}
+\label{sec:notation}
+% ============================================================
+
+Let $\mathcal{X} \subseteq \reals^d$ denote the input space with $d$ features and $\mathcal{Y}$ the output space (a discrete label set for classification). We assume access to a trained black-box predictor $f\colon \mathcal{X} \to \mathcal{Y}$ through its prediction interface only, and a dataset $\mathcal{D} = \{(\mathbf{x}_i, y_i)\}_{i=1}^n$ drawn from a distribution~$P$. We distinguish two risk notions: \emph{predictive risk} (with respect to ground-truth labels~$y$) and \emph{fidelity risk} (with respect to black-box outputs~$f(\mathbf{x})$). The goal of global rule extraction is to find a rule set $\mathcal{R}$ that yields high fidelity to~$f$ while maintaining bounded complexity~$|\mathcal{R}|$.
+
+It is important to clarify the relationship between \trace{}'s output and those of attribution methods. SHAP and CIU produce, for each instance, a vector of numeric scores that decompose the prediction along feature dimensions. \trace{} produces a \emph{single global rule set} $\mathcal{R}$ that approximates $f$ across the entire input space. These outputs are complementary rather than competing: attribution scores explain \emph{why a particular prediction was made} (local, instance-level insight), while $\mathcal{R}$ explains \emph{what general decision logic the model follows} (global, model-level insight). Similarly, DEXiRE~\citep{contreras2022dexire} produces global rules, but in a different format: \trace{} rules are conjunctive (conjunctions of axis-aligned conditions along tree paths), whereas DEXiRE produces rules in disjunctive normal form (DNF).
+
+\begin{definition}[Surrogate Approximation]
+\label{def:surrogate}
+An interpretable surrogate $g \in \mathcal{G}$, where $\mathcal{G}$ is a constrained hypothesis class (e.g., decision trees of bounded depth~$D_{\max}$), is obtained by minimizing the regularized fidelity objective:
+\begin{equation}
+\label{eq:surrogate-objective}
+    \hat{g} \;\in\; \arg\min_{g \in \mathcal{G}} \;\frac{1}{n}\sum_{i=1}^{n} \ell\!\bigl(g(\mathbf{x}_i),\, f(\mathbf{x}_i)\bigr) + \lambda\,\Omega(g),
+\end{equation}
+where $\ell$ is a fidelity loss (0--1 loss for classification), $\Omega(g)$ is a complexity penalty (e.g., number of leaves), and $\lambda \ge 0$ controls the fidelity--interpretability trade-off.
+\end{definition}
+
+\begin{definition}[Rule Set]
+\label{def:ruleset}
+A decision tree $g$ induces a rule set $\mathcal{R}(g) = \{r_1, \ldots, r_K\}$, where each rule $r_k$ corresponds to a root-to-leaf path:
+\begin{equation}
+\label{eq:rule}
+    r_k\colon \;\; \text{IF}\; c_1(\mathbf{x}) \wedge \cdots \wedge c_{p_k}(\mathbf{x}) \;\text{THEN}\; \hat{y}_k,
+\end{equation}
+with each condition $c_j(\mathbf{x})$ of the form $x_{[i_j]} \le \tau_j$ or $x_{[i_j]} > \tau_j$. Each rule is annotated with confidence $\gamma_k$ (fraction of correctly classified samples at the leaf) and support $n_k$ (number of samples reaching the leaf).
+\end{definition}
+
+
+% ============================================================
+\section{The \trace{} Method}
+\label{sec:method}
+% ============================================================
+
+\trace{} extracts rules in three phases, formalized in \Cref{alg:trace}. The overall pipeline is deliberately simple---simplicity is itself a design goal, as it facilitates independent audit and reimplementation.
+
+\paragraph{Phase 1: Pseudo-label generation.}
+Given data $\mathbf{X} \in \reals^{n \times d}$, the framework computes pseudo-labels $\hat{\mathbf{y}} = [f(\mathbf{x}_1), \ldots, f(\mathbf{x}_n)]^\top$ by querying the black-box predictor. A crucial design decision is that the surrogate is trained on $\hat{\mathbf{y}}$---not the true labels~$\mathbf{y}$---because the goal is to explain \emph{what the model has learned}, not what the underlying data distribution looks like. This distinction is essential: a surrogate trained on true labels would conflate the model's behavior with the data-generating process, potentially producing ``explanations'' that are faithful to the data but not to the model being explained.
+
+\paragraph{Phase 2: Surrogate fitting.}
+A decision tree $g\colon \mathcal{X} \to \mathcal{Y}$ is fitted on $(\mathbf{X}, \hat{\mathbf{y}})$, parameterized by maximum depth~$D_{\max}$, minimum samples per leaf~$s_{\min}$, cost-complexity pruning parameter~$\alpha_{\mathrm{ccp}}$, and optional monotonicity constraints $\mathbf{m} \in \{-1,0,+1\}^d$. The choice of decision tree as the surrogate class is motivated by the fact that trees naturally decompose into conjunctive rules (one per root-to-leaf path), making rule extraction trivial. Alternative surrogate classes (e.g., rule lists, oblique trees) could be substituted without modifying the evaluation protocol.
+
+\paragraph{Phase 3: Rule extraction and annotation.}
+The rule set $\mathcal{R}(g)$ is extracted as in \Cref{def:ruleset}, with each rule annotated by confidence~$\gamma_k$ and support~$n_k$.
+
+This pedagogical approach---treating the model as a pure input--output oracle---contrasts sharply with the decompositional strategy of DEXiRE~\citep{contreras2022dexire}, which requires architecture-specific access to hidden-layer activations. While DEXiRE's layer-by-layer decomposition provides valuable neuron-level mechanistic insight, \trace{}'s surrogate approach enables application to any predictor: neural networks of any architecture, random forests, gradient-boosted trees, SVMs, and even non-parametric models. CIU~\citep{framling2020ciu} achieves model-agnosticism through a different mechanism---estimating output ranges by sampling representative input vectors---but does not produce symbolic rules.
+
+\begin{algorithm}[t]
+\caption{\trace{} Rule Extraction Pipeline (Full)}
+\label{alg:trace}
+\begin{algorithmic}[1]
+\REQUIRE Black-box $f$, data $\mathbf{X} \in \reals^{n \times d}$, hyperparameters $D_{\max}$, $s_{\min}$, $\alpha_{\mathrm{ccp}}$
+\ENSURE Rule set $\mathcal{R}$, fidelity report $\mathcal{F}$, CF report, MDL report
+\STATE \textbf{Phase 1:} $\hat{\mathbf{y}} \leftarrow f(\mathbf{X})$ \COMMENT{Generate pseudo-labels from black-box}
+\STATE \textbf{Phase 1b (optional):} $\mathbf{X}_{\text{aug}}, \hat{\mathbf{y}}_{\text{aug}} \leftarrow \text{Augment}(\mathbf{X}, f)$ \COMMENT{Data augmentation (\Cref{sec:augmentation})}
+\STATE \textbf{Phase 2:} $g \leftarrow \text{FitDecisionTree}(\mathbf{X}, \hat{\mathbf{y}},\; D_{\max}, s_{\min}, \alpha_{\mathrm{ccp}})$
+\STATE \textbf{Phase 3:} $\mathcal{R} \leftarrow \text{ExtractRules}(g)$ \COMMENT{Root-to-leaf path conditions}
+\STATE \textbf{Phase 4 (optional):} $\mathcal{R} \leftarrow \text{Prune}(\mathcal{R},\; \gamma_{\min}, n_{\min})$ \COMMENT{Confidence/support pruning}
+\STATE \textbf{Phase 5 (optional):} $\mathcal{R}, \text{CF} \leftarrow \text{CounterfactualFilter}(\mathcal{R}, f, \mathbf{X})$ \COMMENT{(\Cref{sec:counterfactual})}
+\STATE \textbf{Phase 6 (optional):} $\mathcal{R}, \text{MDL} \leftarrow \text{MDLSelect}(\mathcal{R}, f, \mathbf{X})$ \COMMENT{(\Cref{sec:mdl})}
+\STATE $\mathcal{F} \leftarrow \text{ComputeFidelity}(g, f, \mathbf{X})$
+\RETURN $\mathcal{R}$, $\mathcal{F}$, CF, MDL
+\end{algorithmic}
+\end{algorithm}
+
+\paragraph{Complexity metrics.}
+To enable quantitative comparison of interpretability across methods and datasets, \trace{} reports four complexity metrics: the number of rules~$|\mathcal{R}|$ (leaves in the tree), the average rule length $\bar{L} = |\mathcal{R}|^{-1} \sum_{r} |r|$, a normalized complexity $\bar{L}_{\mathrm{norm}} = \bar{L}/d$ for cross-dataset comparison, and an interaction strength $\iota = |\mathcal{R}|^{-1} \sum_r \indicator[|\mathrm{features}(r)| \ge 2]$ measuring the fraction of multi-feature rules.
+
+\paragraph{Computational complexity.}
+The cost of the base pipeline is dominated by surrogate fitting at $O(n \cdot d \cdot D_{\max})$ per tree, plus $O(n)$ for pseudo-label generation. The ensemble variant (\Cref{sec:ensemble}) with $N$ bootstrap surrogates scales as $O(N \cdot n \cdot d \cdot D_{\max})$. In practice, this remains tractable even for moderately large datasets, as shown in \Cref{sec:experiments:scalability}.
+
+
+% ============================================================
+\section{Evaluation Protocol: Fidelity, Stability, and Uncertainty}
+\label{sec:evaluation}
+% ============================================================
+
+A central contribution of \trace{} is its multi-faceted evaluation protocol, which jointly quantifies fidelity, stability, and statistical uncertainty of extracted explanations. This addresses a pervasive gap in the XAI literature: most methods---including SHAP, LIME, CIU, and DEXiRE---report performance metrics without formal uncertainty quantification or built-in stability guarantees.
+
+% ----------------------------------------------------------
+\subsection{Fidelity Assessment}
+\label{sec:evaluation:fidelity}
+
+Fidelity measures the agreement between the surrogate~$g$ and the black-box~$f$. For classification on an evaluation set $\{\mathbf{x}_j\}_{j=1}^m$:
+\begin{equation}
+\label{eq:fidelity-acc}
+    \fidacc(g) = \frac{1}{m}\sum_{j=1}^{m} \indicator\!\bigl[g(\mathbf{x}_j) = f(\mathbf{x}_j)\bigr].
+\end{equation}
+\trace{} also computes \emph{per-class fidelity} $\mathrm{Fidelity}_c$ to detect class-specific approximation failures that aggregate metrics may mask---a particularly important diagnostic in imbalanced settings where the surrogate might achieve high overall fidelity by correctly mimicking the majority class while poorly approximating minority-class decisions.
+
+Three evaluation modes are supported, each with distinct statistical properties:
+\begin{enumerate}[leftmargin=*,label=(\alph*)]
+    \item \emph{In-sample fidelity}: an upper bound useful for detecting underfitting but susceptible to overfitting.
+    \item \emph{Hold-out fidelity}: unbiased estimation on unseen data.
+    \item \emph{$k$-fold cross-validation}: variance-reduced estimation with stratified splits:
+    \begin{equation}
+    \label{eq:cv-fidelity}
+        \overline{\mathrm{Fidelity}}_{\mathrm{CV}} = \frac{1}{k} \sum_{j=1}^{k} \fidacc\!\bigl(g^{(j)};\, \mathcal{D}_j^{\mathrm{test}}\bigr).
+    \end{equation}
+\end{enumerate}
+
+\begin{remark}
+DEXiRE~\citep{contreras2022dexire} defines fidelity as the agreement between black-box predictions and rule set predictions, which is conceptually equivalent to \Cref{eq:fidelity-acc}. However, DEXiRE evaluates fidelity only via cross-validation averages with standard deviations, without bootstrap confidence intervals or per-class breakdowns.
+\end{remark}
+
+% ----------------------------------------------------------
+\subsection{Bootstrap Confidence Intervals}
+\label{sec:evaluation:bootstrap}
+
+To provide rigorous uncertainty quantification, \trace{} employs the percentile bootstrap~\citep{fisher2019all}. Given $B$ resamples, each yielding a fidelity estimate~$\hat{\theta}_b$, the $(1-\alpha)$ confidence interval is:
+\begin{equation}
+\label{eq:bootstrap-ci}
+    \mathrm{CI}_{1-\alpha} = \bigl[\hat{\theta}_{(\alpha/2)},\, \hat{\theta}_{(1-\alpha/2)}\bigr],
+\end{equation}
+where $\hat{\theta}_{(q)}$ is the $q$-th quantile of the bootstrap distribution. This non-parametric approach accounts for both sampling variability in the data and instability in the surrogate fitting procedure, providing a more complete picture than point estimates alone. The bootstrap confidence interval serves a practical purpose: it tells the practitioner whether the reported fidelity is reliable or whether it might fluctuate significantly with different data samples.
+
+% ----------------------------------------------------------
+\subsection{Stability via Fuzzy-Signature Jaccard Analysis}
+\label{sec:evaluation:stability}
+
+A reliable explanation should be stable: small perturbations of the training data should not dramatically alter the extracted rules. This concern is particularly acute for rule extraction, where small data shifts can change tree split points and thereby restructure the entire rule set. While stability concerns have been raised for attribution methods as well~\citep{alvarez2018robustness, krishna2022disagreement}, the discrete nature of rule sets makes instability especially problematic: a rule that appears in one extraction but vanishes in another cannot be trusted for audit purposes.
+
+Given $B$ bootstrap resamples, let $\mathcal{R}_b$ denote the rule set from the $b$-th resample and $\sigma(r)$ the canonical string signature of rule~$r$. Define $S_b = \{\sigma(r) : r \in \mathcal{R}_b\}$. Stability is the mean pairwise Jaccard similarity~\citep{jaccard1901etude}:
+\begin{equation}
+\label{eq:stability}
+    \mathrm{Stability} = \frac{2}{B(B-1)} \sum_{a < b} J(S_a, S_b),
+    \quad J(S_a, S_b) = \frac{|S_a \cap S_b|}{|S_a \cup S_b|}.
+\end{equation}
+
+\paragraph{The case for fuzzy matching.}
+Exact signature matching systematically understates stability when surrogates produce rules with nearly identical thresholds (e.g., $x_1 \le 5.001$ vs.\ $x_1 \le 4.999$). These rules are semantically equivalent---they partition the input space almost identically---but are treated as completely different under exact matching. \trace{} therefore introduces \emph{fuzzy stability}, rounding each threshold to $\tilde{\tau} = \mathrm{round}(\tau/\delta) \cdot \delta$ before signature computation, where $\delta > 0$ is a tolerance parameter (configurable globally or per-feature). Fuzzy signatures recognize semantically equivalent rules that differ only in numerical precision due to minor data perturbations.
+
+\begin{proposition}[Properties of fuzzy stability]
+\label{prop:fuzzy}
+For any fixed $\delta > 0$, the fuzzy Jaccard similarity satisfies:
+\begin{enumerate}[label=(\roman*)]
+    \item \emph{Monotonicity}: $J_\delta(S_a, S_b) \ge J_0(S_a, S_b)$ for all rule sets $S_a, S_b$.
+    \item \emph{Continuity}: $\lim_{\delta \to 0} J_\delta = J_0$.
+    \item \emph{Metric properties}: $J_\delta$ is symmetric and bounded in $[0,1]$.
+\end{enumerate}
+\end{proposition}
+
+
+% ============================================================
+\section{Ensemble Stable Rule Extraction}
+\label{sec:ensemble}
+% ============================================================
+
+Beyond measuring stability, \trace{} leverages the bootstrap ensemble \emph{constructively}: it identifies rules \emph{consistently} extracted across resamples, producing an audit-ready subset of high-confidence rules. The key insight is that rules appearing frequently across independent bootstrap samples capture genuine patterns in the model's decision logic, while rules appearing in only a few samples likely reflect data-specific idiosyncrasies.
+
+\Cref{alg:ensemble} formalizes this procedure. For each unique fuzzy signature appearing in at least a fraction~$\phi$ of the $N$ bootstrap surrogates, the framework selects the representative variant with the highest sample support~$n_k$, under the assumption that higher-support variants are more statistically reliable. The output includes each rule's frequency (fraction of trees containing it), the number of merged variants, and aggregate ensemble statistics.
+
+\begin{algorithm}[t]
+\caption{Ensemble Stable Rule Extraction}
+\label{alg:ensemble}
+\begin{algorithmic}[1]
+\REQUIRE Data $\mathbf{X}$, black-box $f$, number of estimators $N$, frequency threshold $\phi$, tolerance $\delta$
+\ENSURE Stable rules $\mathcal{R}^*$, ensemble report $\mathcal{E}$
+\FOR{$b = 1, \ldots, N$}
+    \STATE $\mathbf{X}_b, \hat{\mathbf{y}}_b \leftarrow \text{BootstrapResample}(\mathbf{X}, f)$
+    \STATE $g_b \leftarrow \text{FitSurrogate}(\mathbf{X}_b, \hat{\mathbf{y}}_b)$
+    \STATE $\mathcal{R}_b \leftarrow \text{ExtractRules}(g_b)$
+\ENDFOR
+\STATE $\mathcal{C} \leftarrow \emptyset$ \COMMENT{Fuzzy signature $\to$ frequency map}
+\FOR{each rule $r$ in $\bigcup_b \mathcal{R}_b$}
+    \STATE $\tilde{\sigma} \leftarrow \text{FuzzySignature}(r, \delta)$
+    \STATE $\mathcal{C}[\tilde{\sigma}] \leftarrow \mathcal{C}[\tilde{\sigma}] + 1/N$
+\ENDFOR
+\STATE $\mathcal{R}^* \leftarrow \{r : \mathcal{C}[\tilde{\sigma}(r)] \ge \phi\}$, selecting representatives with highest support
+\RETURN $\mathcal{R}^*$, $\mathcal{E}$
+\end{algorithmic}
+\end{algorithm}
+
+The ensemble mechanism serves three complementary purposes. First, \emph{noise filtering}: rules appearing in only a few bootstrap samples likely reflect data-specific idiosyncrasies rather than genuine model behavior, and are appropriately discarded. Second, \emph{confidence ranking}: high-frequency rules represent decision logic that the model robustly encodes, providing a natural ordering by reliability. Third, \emph{audit readiness}: regulators and auditors can focus their review on a compact, statistically validated rule set rather than the full surrogate tree, substantially reducing the effort required for compliance verification.
+
+\paragraph{Comparison with alternative rule reduction strategies.}
+It is instructive to contrast this approach with the rule reduction strategies of other methods. DEXiRE~\citep{contreras2022dexire} controls rule set complexity through a coverage threshold parameter~(Th) that filters low-coverage terms and applies SAT-based consistency checks. This effectively reduces rule length within a single extraction run, but does not assess whether retained rules are robust to data perturbation. CIU~\citep{framling2020ciu} faces a different version of this problem: CI and CU estimates depend on the set of representative input vectors sampled, and while larger sample sizes improve accuracy, no formal confidence interval is provided. \trace{}'s ensemble approach provides the complementary guarantee that reported rules are not artifacts of a particular data sample.
+
+
+% ============================================================
+\section{Regulatory Compliance Tools}
+\label{sec:regulatory}
+% ============================================================
+
+In regulated domains, explanations must satisfy constraints beyond fidelity and stability. \trace{} provides two compliance mechanisms that, to our knowledge, are not offered by any of the methods reviewed in \Cref{sec:related}.
+
+\paragraph{Configurable rule pruning.}
+Four post-hoc pruning strategies are available, each addressing a specific regulatory or interpretability concern:
+\begin{enumerate}[leftmargin=*,label=(\roman*)]
+    \item \emph{Confidence pruning}: removing rules with confidence $\gamma_k < \gamma_{\min}$, ensuring that only rules with sufficient predictive certainty are retained.
+    \item \emph{Support pruning}: removing rules with support $n_k < n_{\min}$, filtering out rules that apply to too few instances to be statistically meaningful.
+    \item \emph{Complexity truncation}: retaining only the first $L_{\max}$ conditions per rule (those closest to the root, typically the most informative splits), reducing cognitive load while preserving the most discriminative conditions.
+    \item \emph{Redundancy elimination}: simplifying rules with duplicate conditions on the same feature by retaining only the tightest bound, producing logically equivalent but more concise rules.
+\end{enumerate}
+These filters can be composed sequentially and their impact on fidelity is automatically reported, allowing practitioners to assess the fidelity cost of each pruning step.
+
+\paragraph{Monotonicity validation.}
+Many regulatory contexts require that predictions respect domain-specific monotonic relationships (e.g., higher income should not decrease creditworthiness; lower risk scores should not increase insurance premiums). \trace{} provides a dual approach to monotonicity enforcement.
+
+When supported by the backend implementation (e.g., scikit-learn~$\ge$~1.4), \trace{} passes monotonicity constraints $\mathbf{m} \in \{-1,0,+1\}^d$ directly to the tree fitting algorithm, ensuring compliance by construction. Additionally, \trace{} provides an independent post-hoc validation procedure: rules are grouped by context (conditions on non-constrained features), ordered by the constrained feature's threshold within each group, and checked for monotonicity violations. All violations are reported with specific rule indices and the magnitude of the violation. This defense-in-depth approach---enforcement plus independent validation---is particularly valuable when auditors require explicit compliance certificates.
+
+
+% ============================================================
+\section{Counterfactual Rule Scoring}
+\label{sec:counterfactual}
+% ============================================================
+
+A high-fidelity surrogate may place splits at locations where the black-box does \emph{not} change its prediction. We call these ``phantom splits'': artefacts of the surrogate's fitting procedure that do not correspond to genuine decision boundaries. This section introduces a multi-probe counterfactual algorithm that scores each rule by the fraction of its conditions that are counterfactually valid.
+
+% ----------------------------------------------------------
+\subsection{Motivation}
+\label{sec:counterfactual:motivation}
+
+Consider a surrogate rule $r$: IF $x_1 \le 5.0$ AND $x_2 \le 3.0$ THEN class~$=$ A. Even if the surrogate has 95\% fidelity, the individual split $x_1 \le 5.0$ may be a phantom: perturbing $x_1$ from 4.9 to 5.1 while holding all other features fixed may produce no change in the black-box prediction. Such a condition should not be presented to auditors as a meaningful boundary.
+
+This problem is fundamental to surrogate-based explanation: aggregate fidelity measures evaluate the surrogate globally, but individual split boundaries are evaluated nowhere. \trace{}'s counterfactual scoring fills this gap.
+
+% ----------------------------------------------------------
+\subsection{Algorithm}
+\label{sec:counterfactual:algorithm}
+
+\begin{algorithm}[t]
+\caption{Multi-Probe Counterfactual Rule Scoring}
+\label{alg:cf}
+\begin{algorithmic}[1]
+\REQUIRE Rule $r$ with conditions $\{c_1, \ldots, c_p\}$, black-box $f$, data $\mathbf{X}$, noise scale $\eta$, number of probes $P$
+\ENSURE Validity score $s(r) \in [0,1]$, per-condition validity
+\STATE $v \leftarrow 0$ \COMMENT{Count of valid conditions}
+\FOR{each condition $c_j$: $x_{[i_j]} \le \tau_j$}
+    \STATE $\delta_j \leftarrow \eta \cdot \hat{\sigma}_{i_j}$ \COMMENT{Feature-scaled perturbation}
+    \STATE $\text{valid}_j \leftarrow \text{false}$
+    \FOR{$k = 1, \ldots, P$}
+        \STATE $\mathbf{b} \sim \text{Uniform}(\min(\mathbf{X}), \max(\mathbf{X}))$ \COMMENT{Random base point}
+        \STATE $\mathbf{x}^- \leftarrow \mathbf{b}$; $x^-_{[i_j]} \leftarrow \tau_j - \delta_j$ \COMMENT{Below threshold}
+        \STATE $\mathbf{x}^+ \leftarrow \mathbf{b}$; $x^+_{[i_j]} \leftarrow \tau_j + \delta_j$ \COMMENT{Above threshold}
+        \IF{$f(\mathbf{x}^-) \ne f(\mathbf{x}^+)$}
+            \STATE $\text{valid}_j \leftarrow \text{true}$; \textbf{break} \COMMENT{Boundary confirmed}
+        \ENDIF
+    \ENDFOR
+    \IF{$\text{valid}_j$} $v \leftarrow v + 1$ \ENDIF
+\ENDFOR
+\RETURN $s(r) = v / p$
+\end{algorithmic}
+\end{algorithm}
+
+\Cref{alg:cf} formalises the procedure. For each condition $c_j: x_{[i_j]} \le \tau_j$ in a rule, the algorithm generates $P$ random base points uniformly distributed in the observed feature ranges. For each base point, it creates a paired sample straddling the threshold: one with $x_{[i_j]} = \tau_j - \delta_j$ and one with $x_{[i_j]} = \tau_j + \delta_j$, where $\delta_j = \eta \cdot \hat{\sigma}_{i_j}$ is a feature-scaled perturbation. If the black-box prediction changes for \emph{at least one} probe pair, the condition is deemed \emph{counterfactually valid}---the black-box also treats this threshold as a decision boundary. The rule's validity score is the fraction of valid conditions.
+
+\paragraph{Why multiple probes are necessary.}
+A single probe pair (as in early versions of the algorithm) is insufficient for ensemble models whose decision boundaries are not axis-aligned. Consider a Random Forest where the boundary in the $(x_1, x_2)$ plane is a zig-zag: probing at a specific $(x_2, x_3, \ldots, x_d)$ may land in a region where $x_1$ does not contribute to the decision. With $P$ random base points, the probability of missing a real boundary decreases exponentially: if the boundary is active in a fraction $\alpha$ of the feature space, then $\Pr[\text{miss}] = (1-\alpha)^P$.
+
+\paragraph{Filtering.}
+When a validity threshold $\theta$ is specified, rules with $s(r) < \theta$ are removed. The resulting rule set contains only rules whose \emph{every} surviving condition corresponds to a real black-box boundary, addressing the fundamental limitation of surrogate-based explainers.
+
+
+% ============================================================
+\section{MDL-Based Rule Selection}
+\label{sec:mdl}
+% ============================================================
+
+While ensemble filtering selects rules by \emph{frequency} and counterfactual scoring selects by \emph{boundary validity}, MDL-based selection provides a complementary \emph{information-theoretic} criterion. It selects the subset of rules that best compresses the data, formalising the intuition that good explanations are parsimonious descriptions.
+
+% ----------------------------------------------------------
+\subsection{The Minimum Description Length Principle}
+\label{sec:mdl:principle}
+
+The MDL principle~\citep{rissanen1978modeling, grunwald2007minimum} states that the best model is the one minimising the total description length:
+\begin{equation}
+\label{eq:mdl}
+    \mathrm{MDL}(r) = L(\text{model}) + L(\text{data} \mid \text{model}).
+\end{equation}
+
+For a rule $r$ with conditions $\{c_1, \ldots, c_p\}$, we define:
+\begin{equation}
+\label{eq:mdl-model}
+    L(\text{model}) = p \cdot \bigl(\log_2 d + b\bigr) + \log_2 |\mathcal{Y}|,
+\end{equation}
+where $d$ is the number of features, $b$ is the precision in bits per threshold, and $|\mathcal{Y}|$ is the number of classes. Each condition requires $\log_2 d$ bits to identify the feature and $b$ bits to encode the threshold value. The prediction requires $\log_2 |\mathcal{Y}|$ bits.
+
+The data cost encodes the misclassifications on covered samples:
+\begin{equation}
+\label{eq:mdl-data}
+    L(\text{data} \mid \text{model}) = n_r \cdot H(\varepsilon_r),
+\end{equation}
+where $n_r$ is the number of samples covered by rule $r$, $\varepsilon_r$ is the error rate (fraction of covered samples where the rule's prediction disagrees with the black-box), and $H(\varepsilon) = -\varepsilon\log_2\varepsilon - (1-\varepsilon)\log_2(1-\varepsilon)$ is the binary entropy function.
+
+% ----------------------------------------------------------
+\subsection{Selection Algorithms}
+\label{sec:mdl:selection}
+
+A rule is \emph{information-efficient} if its total MDL cost is less than the null-hypothesis cost of encoding the same covered samples without any rule:
+\begin{equation}
+\label{eq:mdl-null}
+    \mathrm{MDL}(r) < n_r \cdot \log_2 |\mathcal{Y}|.
+\end{equation}
+
+\trace{} provides two greedy selection methods:
+\begin{itemize}[leftmargin=*]
+    \item \emph{Forward selection}: Sort rules by ascending MDL. Add a rule only if it satisfies \Cref{eq:mdl-null}. This produces a minimal, information-efficient rule set.
+    \item \emph{Backward elimination}: Start with all rules. Iteratively remove the rule whose MDL cost most exceeds its null-hypothesis savings. Stop when no rule can be profitably removed.
+\end{itemize}
+
+\paragraph{Complementarity.}
+The three selection mechanisms---ensemble frequency, counterfactual validity, and MDL efficiency---are complementary and can be chained: ensemble $\to$ counterfactual $\to$ MDL. Ensemble selection identifies rules that are \emph{stable} across resamples. Counterfactual scoring identifies rules whose boundaries are \emph{valid}. MDL selection identifies rules that are \emph{information-efficient}. Together, they form a principled pipeline for producing compact, reliable, and well-grounded explanations.
+
+
+% ============================================================
+\section{Data Augmentation}
+\label{sec:augmentation}
+% ============================================================
+
+Standard surrogate training uses only the available data $\mathbf{X}$ without exploring under-represented regions of the input space. This can produce surrogates that are faithful where data is dense but unreliable near decision boundaries or in sparse regions. \trace{} provides three augmentation strategies.
+
+\paragraph{Perturbation augmentation (LIME-style).}
+For each sample $\mathbf{x}_i \in \mathbf{X}$, generate $k$ neighbours by adding Gaussian noise scaled by feature-wise standard deviation: $\tilde{\mathbf{x}} = \mathbf{x}_i + \eta \cdot \hat{\boldsymbol{\sigma}} \odot \boldsymbol{\epsilon}$, where $\boldsymbol{\epsilon} \sim \mathcal{N}(\mathbf{0}, \mathbf{I})$. The black-box is queried on each synthetic sample to produce pseudo-labels.
+
+\paragraph{Boundary augmentation.}
+Pairs of samples with different black-box predictions are identified, and interpolated samples are generated near the estimated boundary. This focuses the surrogate's training on the most informative regions.
+
+\paragraph{Sparse region augmentation.}
+Samples are generated uniformly in under-represented regions of the feature space, identified by low local density. This addresses coverage gaps.
+
+All three strategies can be combined. In the income prediction example (\Cref{sec:experiments:credit}), perturbation augmentation with $k=2$ and $\eta=0.05$ expanded 5{,}000 base samples to 15{,}000, improving the surrogate's coverage of the decision space near boundaries.
+
+
+% ============================================================
+\section{Theoretical Fidelity Bounds}
+\label{sec:bounds}
+% ============================================================
+
+\trace{} provides PAC-learning and Rademacher complexity bounds on how well a depth-$D$ surrogate can approximate any black-box.
+
+\begin{proposition}[VC dimension]
+\label{prop:vc}
+A binary decision tree of depth $D$ over $d$ features has VC dimension bounded by $\mathrm{VC}(D) \le 2^D - 1$.
+\end{proposition}
+
+\begin{proposition}[PAC estimation error]
+\label{prop:pac}
+Given $n$ samples and failure probability $\delta$, the estimation error between empirical and true fidelity is bounded by:
+\begin{equation}
+\label{eq:pac-bound}
+    \varepsilon_{\mathrm{PAC}} \le \sqrt{\frac{\mathrm{VC} \cdot \ln(2n/\mathrm{VC}) + \ln(4/\delta)}{2n}}.
+\end{equation}
+\end{proposition}
+
+A tighter, data-dependent bound based on Rademacher complexity~\citep{bartlett2002rademacher}:
+\begin{equation}
+\label{eq:rademacher-bound}
+    \varepsilon_{\mathrm{Rad}} \le 2\sqrt{\frac{\mathrm{VC} \cdot \ln(en/\mathrm{VC})}{n}} + \sqrt{\frac{\ln(1/\delta)}{2n}}.
+\end{equation}
+
+These bounds serve two practical purposes. First, they give guaranteed lower bounds on fidelity: if the empirical fidelity is $\hat{F}$, then the true fidelity is at least $\hat{F} - \varepsilon$ with probability $1-\delta$. Second, inverting the bound gives the minimum sample size needed to achieve a desired estimation error, guiding practitioners on data requirements.
+
+
+% ============================================================
+\section{Experiments}
+\label{sec:experiments}
+% ============================================================
+
+We evaluate \trace{} along seven research questions:
+\begin{enumerate}[leftmargin=*,label=\textbf{RQ\arabic*}:]
+    \item How does surrogate depth affect the fidelity--interpretability trade-off?
+    \item What do bootstrap stability scores reveal about rule reliability?
+    \item How effective is ensemble filtering at identifying robust rules?
+    \item Can monotonicity constraints be enforced with minimal fidelity loss?
+    \item How does \trace{} scale with dataset size?
+    \item Does counterfactual scoring identify phantom boundaries in real scenarios?
+    \item Does MDL selection produce more compact rule sets without sacrificing fidelity?
+\end{enumerate}
+
+% ----------------------------------------------------------
+\subsection{Experimental Setup}
+\label{sec:experiments:setup}
+
+\paragraph{Datasets.}
+We evaluate \trace{} on three standard classification benchmarks, selected for their diversity in size, dimensionality, and domain relevance (\Cref{tab:datasets}).
+
+\begin{table}[ht]
+\centering
+\caption{Benchmark datasets used in the experimental evaluation.}
+\label{tab:datasets}
+\begin{tabular}{llrrrl}
+\toprule
+\textbf{Dataset} & \textbf{Task} & \textbf{$n$} & \textbf{$d$} & \textbf{Classes} & \textbf{Domain} \\
+\midrule
+Adult (Census Income) & Classification & 48{,}842 & 14 & 2 & Finance \\
+German Credit         & Classification & 1{,}000 & 20 & 2 & Finance \\
+COMPAS Recidivism     & Classification & 7{,}214 & 12 & 2 & Criminal justice \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Black-box models.}
+For each dataset, three black-box models are trained: Random Forest~\citep{breiman2001random} ($T\!=\!500$ trees), XGBoost ($T\!=\!300$, learning rate$\,=0.1$), and a multilayer perceptron (2~hidden layers, 128~units each, ReLU activations). This selection spans the major families of non-interpretable predictors and enables assessment of whether \trace{}'s behavior is consistent across architectures.
+
+\paragraph{Baselines.}
+We compare \trace{} against: (i)~a single decision tree surrogate (standard distillation without ensemble or stability analysis), (ii)~Anchors~\citep{ribeiro2018anchors}, and (iii)~CORELS~\citep{angelino2017learning} (classification only). The single-tree baseline isolates the contribution of \trace{}'s ensemble and stability components.
+
+\paragraph{Protocol.}
+All experiments use 5-fold stratified cross-validation. Bootstrap analysis uses $B\!=\!200$ resamples; ensemble extraction uses $N\!=\!50$ surrogates with varying frequency thresholds~$\phi$. Results are averaged over 5~random seeds. We report fidelity (\Cref{eq:fidelity-acc}), rule count~$|\mathcal{R}|$, average rule length~$\bar{L}$, and fuzzy stability (\Cref{eq:stability}, $\delta=0.01$).
+
+% ----------------------------------------------------------
+\subsection{Results}
+\label{sec:experiments:results}
+
+\Cref{tab:results_class} presents the classification results.
+
+\begin{table}[ht]
+\centering
+\caption{\trace{} performance on \textbf{classification} benchmarks ($D_{\max}=4$, black-box: XGBoost for Adult/COMPAS, RF for German). Fidelity is accuracy. Stability is mean pairwise fuzzy Jaccard ($\delta=0.01$).}
+\label{tab:results_class}
+\small
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Dataset} & \textbf{Fidelity} & \textbf{Rules $|\mathcal{R}|$} & \textbf{Length $\bar{L}$} & \textbf{Stability $J_{0.01}$} & \textbf{Ensemble Rules} \\
+\midrule
+Adult ($n \approx 49$k)  & 0.91 $\pm$ 0.00 & 16.0 & 4.0 & 0.21 & 16 \\
+German ($n = 1$k)        & 0.71 $\pm$ 0.05 & 15.4 & 4.0 & 0.00 & 0  \\
+COMPAS ($n \approx 7$k)  & 0.90 $\pm$ 0.00 & 16.0 & 4.0 & 0.20 & 18  \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+% ----------------------------------------------------------
+\subsubsection{RQ1: Fidelity--Depth Trade-off}
+\label{sec:experiments:fidelity}
+
+Moderate depth ($D_{\max}=4$) consistently achieves a favorable operating point. On Adult (XGBoost), fidelity reaches 0.91 with $\sim$16 rules. Increasing depth to $D=8$ yields marginal gains (0.94) but explodes complexity to $\sim$141 rules. On the smaller German Credit dataset, fidelity saturates earlier; increasing depth beyond 4 primarily increases variance rather than bias.
+
+% ----------------------------------------------------------
+\subsubsection{RQ2: Stability Analysis}
+\label{sec:experiments:stability}
+
+Our bootstrap analysis exposes a critical vulnerability in standard rule extraction.
+
+\paragraph{The instability of single trees.}
+Exact stability ($\delta=0$) was negligible across nearly all datasets. Even with fuzzy matching ($\delta=0.01$), classification stability remains low on smaller datasets (German: 0.00). COMPAS showed moderate stability (0.20), while Adult ($N \approx 49k$) reached 0.21, confirming that data volume stabilizes rule boundaries.
+
+% ----------------------------------------------------------
+\subsubsection{RQ3: Ensemble Filtering Effectiveness}
+\label{sec:experiments:ensemble}
+
+The ensemble mechanism acts as a reliability filter. On Adult (XGB), it successfully extracted 16 stable rules with high fidelity (0.90). On COMPAS, it identified 18 stable rules ($\phi=0.3$), providing a transparent view of the model's core logic. On German Credit and most regression tasks, it returned an empty set ($|\mathcal{R}^*| = 0$) at $\phi \ge 0.3$.
+Far from a failure, this null result is a \emph{protective mechanism}. It signals to the auditor that the model's logic is too sensitive to data fluctuations to be summarized by a fixed set of simple rules. Current methods like Anchors or single decision trees would silently produce an unstable explanation; \trace{} explicitly flags the uncertainty.
+
+% ----------------------------------------------------------
+\subsubsection{RQ4: Monotonicity Compliance}
+\label{sec:experiments:monotonicity}
+
+On Adult (XGBoost), enforcing monotonicity constraints reduced violations from 3 to 1 with minimal fidelity loss (0.91 $\to$ 0.89). For MLP black-boxes, which naturally learn smoother functions, violations were often zero even without constraints, and enforcing them caused no drop in fidelity. This confirms \trace{} can enforce regulatory requirements without acting as a bottleneck on predictive performance.
+
+% ----------------------------------------------------------
+\subsubsection{RQ5: Scalability}
+\label{sec:experiments:scalability}
+
+Scalability remains linear in $N$. Extracting rules from the full Adult dataset ($N=45,222$) took 3.15s for a single tree and 6.65s for an ensemble of 100 trees. This efficiency allows \trace{} to be used interactively, re-running extractions with different constraints or depths in real-time during an audit.
+
+% ----------------------------------------------------------
+\subsubsection{RQ6--RQ7: Counterfactual Scoring and MDL Selection}
+\label{sec:experiments:credit}
+
+We evaluate the full CF+MDL pipeline across all five benchmark datasets with three black-box models (RF, XGBoost, MLP), using automatic depth selection, perturbation augmentation ($k=2$, $\eta=0.05$), pruning (min\_confidence=0.55, min\_samples=10), counterfactual scoring ($\eta=0.1$, $P=30$ probes, $\theta=0.3$), and forward MDL selection (precision=8 bits).
+
+\paragraph{Results across all benchmarks.}
+\Cref{tab:cf_mdl_all} presents the full CF+MDL pipeline results.
+
+\begin{table}[ht]
+\centering
+\caption{CF+MDL pipeline across all benchmarks. ``Raw'' = rules after pruning; ``CF$\downarrow$'' = rules after counterfactual filtering ($\theta=0.3$); ``MDL$\downarrow$'' = rules after forward MDL selection; ``CF~$\mu$'' = mean counterfactual validity score; ``Bits$\downarrow$'' = MDL compression in bits.}
+\label{tab:cf_mdl_all}
+\small
+\begin{tabular}{llrrrrl}
+\toprule
+\textbf{Dataset} & \textbf{Model} & \textbf{Raw} & \textbf{CF$\downarrow$} & \textbf{MDL$\downarrow$} & \textbf{CF~$\mu$} & \textbf{Bits$\downarrow$} \\
+\midrule
+\multirow{3}{*}{Adult ($n \approx 49$k)}
+  & RF  & 35 & 17 & 4 & 0.32 & 901 \\
+  & XGB &  8 &  8 & 5 & 0.62 & 256 \\
+  & MLP &  8 &  8 & 3 & 0.58 & 399 \\
+\midrule
+\multirow{3}{*}{German ($n = 1$k)}
+  & RF  & 15 &  9 & 9 & 0.39 & 486 \\
+  & XGB & 16 & 16 & 16 & 0.61 & 933 \\
+  & MLP &  1 &  1 & 1 & 1.00 &   0 \\
+\midrule
+\multirow{3}{*}{COMPAS ($n \approx 7$k)}
+  & RF  & 60 & 52 & 2 & 0.45 & 3{,}826 \\
+  & XGB &  8 &  8 & 3 & 0.92 & 578 \\
+  & MLP &  8 &  7 & 3 & 0.42 & 476 \\
+\midrule
+\multirow{3}{*}{Wine ($n \approx 6$k)}
+  & RF  & 47 & 47 & 7 & 0.99 & 3{,}051 \\
+  & XGB & 47 & 47 & 7 & 0.97 & 3{,}024 \\
+  & MLP & 50 & 50 & 7 & 1.00 & 3{,}277 \\
+\midrule
+\multirow{3}{*}{Diabetes ($n = 442$)}
+  & RF  & 15 & 15 & 15 & 1.00 & 668 \\
+  & XGB &  8 &  8 &  8 & 1.00 & 272 \\
+  & MLP & 56 & 56 & 56 & 0.98 & 3{,}725 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{RQ6: Counterfactual validity.}
+CF scoring reveals systematic patterns across datasets and model types. \textbf{Classification tasks exhibit substantially more phantom splits than regression tasks.} On classification benchmarks, mean CF validity ranges from 0.32 (Adult/RF) to 0.92 (COMPAS/XGB), with an overall classification mean of 0.59. On regression benchmarks, validity is consistently high (0.97--1.00), indicating that regression surrogates rarely place splits at phantom boundaries---likely because the continuous prediction surface imposes strong constraints on where meaningful splits can occur.
+
+Within classification, \textbf{model complexity drives phantom prevalence}: Random Forest black-boxes produce the lowest CF scores (0.32--0.45 on Adult and COMPAS), because their many-tree averaging creates diffuse boundaries that are hard for an axis-aligned surrogate to capture precisely. XGBoost models yield higher validity (0.61--0.92), and MLP models are intermediate (0.42--1.00). This pattern provides a novel diagnostic: low CF validity flags not just unreliable rules but also fundamental model--surrogate misalignment.
+
+On the Adult Census dataset specifically, per-rule analysis reveals sharp differentiation (scores ranging 0.25--1.00), with conditions on \texttt{capital-gain} consistently achieving perfect validity across all rules---confirming it as the dominant, genuine decision variable. Rules involving ordinal-encoded categorical features (e.g., \texttt{relationship}) score lower (0.25--0.50), indicating the surrogate places splits where the black-box boundary is diffuse. This per-rule granularity is essential: the aggregate mean of 0.53 masks the fact that some rules are fully trustworthy while others contain phantom conditions.
+
+\paragraph{RQ7: MDL compression.}
+MDL selection achieves substantial compression on most classification tasks. Adult/RF drops from 35 to 4 rules (89\% reduction, 901 bits saved), COMPAS/RF from 60 to 2 rules (97\%, 3{,}826 bits), and Adult/MLP from 8 to 3 rules (62\%). On German Credit, MDL retains all rules for XGB (16~$\to$~16) because the small dataset provides insufficient statistical evidence for compression. On regression tasks, MDL is less aggressive: Wine Quality is compressed from 47--50 to 7 rules (85\%), while Diabetes rules are largely retained because the small dataset ($n=442$) provides insufficient statistical evidence to eliminate rules.
+
+The interaction between CF and MDL filtering is complementary. On Adult/RF, CF first removes 18 phantom-heavy rules (35~$\to$~17), then MDL selects the 4 most information-efficient rules from the survivors. Neither filter alone achieves the same result: CF without MDL would retain 17 rules (still too many for human audit), while MDL without CF might retain rules with phantom boundaries that happen to have low error rates.
+
+\paragraph{Income prediction case study.}
+As a detailed illustration, we present the full audit on Adult Census with a GradientBoosting classifier (200 trees, depth~5, test accuracy 86.4\%). \Cref{tab:credit_pipeline} shows the progressive filtering.
+
+\begin{table}[ht]
+\centering
+\caption{Income prediction pipeline: progressive rule filtering on Adult Census (GBM).}
+\label{tab:credit_pipeline}
+\small
+\begin{tabular}{lcl}
+\toprule
+\textbf{Stage} & \textbf{Rules} & \textbf{Note} \\
+\midrule
+Raw extraction (depth=4) & 15 & Avg length 3.9, fidelity 91.2\% \\
+After CF filtering ($\theta=0.3$) & 10 & Mean validity 0.53, 5 phantom rules removed \\
+After MDL selection (forward) & 3 & MDL reduction 330 bits \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The 3 final rules are decoded from ordinal encodings back to human-readable form using \trace{}'s categorical decoding:
+\begin{quote}
+\small
+\texttt{IF capital-gain > 6{,}922 AND age > 22 AND hours-per-week $\le$ 70} \\
+\texttt{THEN income > \$50K \quad [confidence=100\%, n=708]} \\[4pt]
+\texttt{IF capital-gain $\le$ 5{,}085 AND relationship $\in$ \{Other-relative, Own-child, Unmarried, Wife\}} \\
+\texttt{THEN income $\le$ \$50K \quad [confidence=99\%, n=7{,}866]}
+\end{quote}
+
+The dominance of \texttt{capital-gain} in the extracted rules is not a limitation but a \emph{faithful reflection of the black-box's decision logic}: capital gains are by far the strongest predictor of high income in the Adult Census data, and the GBM model relies heavily on this feature. The rules expose this reliance transparently, which is precisely the goal of a regulatory audit.
+
+The final rules satisfy all monotonicity constraints (age~$\uparrow$, education~$\uparrow$, hours~$\uparrow$ income), have near-perfect structural stability (coverage overlap 0.987~$\pm$~0.005 across 15 bootstraps), and fidelity 91.2\% with 95\% CI $[0.906, 0.918]$.
+
+
+% ============================================================
+\section{Discussion}
+\label{sec:discussion}
+% ============================================================
+
+The experimental results illuminate several themes that merit careful discussion, both regarding \trace{}'s contributions and its limitations.
+
+% ----------------------------------------------------------
+\subsection{What Stability Reveals About Surrogate Explanations}
+\label{sec:discussion:stability}
+
+Perhaps the most significant finding of our experiments is the low stability of single-tree surrogates, even on moderately large datasets. This result has implications that extend beyond \trace{} to the entire paradigm of surrogate-based explanation. When the stability of a single surrogate extraction is near zero (as observed on German Credit), it means that the specific rules presented to a stakeholder are largely determined by the particular data sample used for fitting, not by the underlying model's decision logic.
+
+This does not mean that surrogate explanations are useless---individual surrogates still achieve reasonable fidelity---but it does mean that individual rules should be interpreted with appropriate epistemic caution. The ensemble mechanism provides a principled response: by reporting which rules are stable and which are not, \trace{} enables a more honest and nuanced presentation of explanatory findings. A regulator reviewing an ensemble-filtered rule set knows that each rule survived a form of cross-validation, providing greater confidence in its reliability than a single-tree extraction could offer.
+
+The near-zero stability on German Credit ($n=1{,}000$) compared to moderate stability on Adult ($n \approx 48{,}000$) suggests a \emph{minimum data size requirement} for reliable surrogate explanation, analogous to sample size requirements in classical statistics. Establishing formal bounds on this requirement is an important direction for future work.
+
+% ----------------------------------------------------------
+\subsection{The Challenge of Continuous Explanation}
+\label{sec:discussion:regression}
+
+The stark contrast between our classification and regression results highlights a fundamental challenge in XAI. For classification, decision boundaries often align with feature thresholds (e.g., "Age $>$ 18"), making them amenable to stable rule extraction. For regression, the model learns a continuous function surface. Approximating this surface with a step-function (decision tree) is inherently inefficient: it requires many small steps to mimic a smooth curve, leading to higher complexity and lower stability.
+This suggests that for regression tasks, \trace{} should be used with specific adaptations: (i)~accepting deeper trees ($D \ge 6$) as necessary complexity; (ii)~focusing on the stability of \emph{regions} rather than exact thresholds; or (iii)~using the fidelity metric ($R^2$) essentially to flag when the rule-based approximation is too coarse to be trusted.
+
+% ----------------------------------------------------------
+\subsection{The Fidelity--Interpretability Trade-off in Context}
+\label{sec:discussion:tradeoff}
+
+The tension between fidelity and interpretability is inherent in any surrogate-based explanation. Our results for classification show that moderate-depth trees ($D_{\max}=4$, yielding approximately 16 rules) achieve competitive fidelity (0.71--0.84 for Random Forests, up to 0.91 for XGBoost) with concise explanations. However, for regression, the trade-off is steeper: to achieve $R^2 > 0.70$ on Wine Quality, we required $D=8$ ($\sim$100 rules), pushing the boundaries of human interpretability.
+
+% ----------------------------------------------------------
+\subsection{Phantom Splits and the Need for Boundary Verification}
+\label{sec:discussion:phantom}
+
+The counterfactual analysis across all five benchmarks (\Cref{sec:experiments:credit}) reveals a previously underappreciated problem with surrogate explanations: a significant fraction of split boundaries are phantoms. On classification tasks, mean CF validity ranges from 0.32 (Adult/RF) to 0.92 (COMPAS/XGB), meaning that 8--68\% of the ``decision boundaries'' presented to auditors \emph{do not correspond to actual boundaries of the model being explained}. This finding extends across all tested black-box architectures and datasets, establishing phantom splits as a systematic rather than incidental phenomenon.
+
+Two structural patterns emerge from the multi-dataset analysis. First, \textbf{regression surrogates are nearly phantom-free} (validity 0.97--1.00), while classification surrogates are substantially affected. This asymmetry arises because continuous prediction surfaces impose strong constraints on where meaningful splits can occur, whereas categorical decision boundaries can be diffuse across the feature space. Second, \textbf{Random Forest black-boxes produce the most phantoms}, likely because averaging over hundreds of trees creates smooth, non-axis-aligned boundaries that are fundamentally mismatched with the surrogate's axis-aligned splits.
+
+The multi-probe design ($P=30$) is essential for robustness: ensemble models have decision boundaries that are not axis-aligned, so a single probe pair may miss a real boundary depending on the values of other features. With $P=30$ probes, even boundaries active in only 10\% of the feature space are detected with probability $> 0.95$.
+
+% ----------------------------------------------------------
+\subsection{MDL as a Principled Alternative to Ad-Hoc Filtering}
+\label{sec:discussion:mdl}
+
+MDL selection replaces frequency-based and coverage-based heuristics with a principled information-theoretic objective. Across all benchmarks (\Cref{tab:cf_mdl_all}), MDL achieves up to 97\% compression on classification tasks (e.g., 60~$\to$~2 on COMPAS/RF, 35~$\to$~4 on Adult/RF) while being appropriately conservative on small datasets (German Credit) or regression tasks where statistical evidence is insufficient. The retained rules are those that best compress the data---rules where the cost of encoding the rule structure is justified by the reduction in data encoding cost.
+
+The interaction between CF and MDL is complementary rather than redundant. CF removes rules with phantom boundaries (structurally unsound), while MDL removes rules with poor compression (informationally redundant). Neither filter subsumes the other: a rule with valid boundaries may still be redundant if it covers few samples, and a high-coverage rule may rest on phantom splits. This connects to a broader theme in the MDL literature~\citep{grunwald2007minimum}: good models are good compressors. By applying this principle to rule selection, \trace{} provides explanations that are not just compact but \emph{information-theoretically justified}.
+
+% ----------------------------------------------------------
+\subsection{Complementarity with Existing Methods}
+\label{sec:discussion:complementarity}
+
+\trace{} complements feature attribution and decompositional methods.
+CIU~\citep{framling2020ciu} addresses a communicative need---adapting explanations to different audiences---that \trace{} matches with global auditability. DEXiRE~\citep{contreras2022dexire} offers mechanistic interpretability. SHAP/CIU serve instance-level debugging.
+\trace{} answers a different question: ``\emph{Under what conditions, globally, does the model make specific decisions---and which of those conditions are real?}'' The counterfactual and MDL components ensure that the answer is not just faithful but also verified and parsimonious.
+
+% ----------------------------------------------------------
+\subsection{Limitations and Threats to Validity}
+\label{sec:discussion:limitations}
+
+We identify several limitations that scope the applicability and interpretation of our results.
+
+\paragraph{Associative, not causal, explanations.}
+\trace{} rules are associative: the condition $x_i \le \tau$ in a rule does not imply that \emph{changing} $x_i$ would cause the predicted outcome to change. For causal reasoning about individual recourse, counterfactual methods~\citep{wachter2018counterfactual} are more appropriate.
+
+\paragraph{Tabular data assumption.}
+The framework assumes tabular input with axis-aligned splits. Extension to sequential data, time-series, or image data requires adapted surrogate representations---a limitation shared by DEXiRE, which has been tested only on tabular classification with feedforward architectures. For high-dimensional inputs (e.g., raw pixels), upstream dimensionality reduction is necessary before decision tree surrogates become effective.
+
+\paragraph{Faithful but potentially misleading explanations.}
+High fidelity to~$f$ does not imply correctness. If $f$ itself is biased or erroneous, \trace{} faithfully reproduces those errors in symbolic form. This ``garbage in, garbage out'' property is inherent to all post-hoc explanation methods: they explain what the model does, not whether what the model does is right. Users must interpret \trace{} rules as descriptions of model behavior, not as validated causal or normative claims.
+
+\paragraph{Limited direct baseline comparison.}
+This work focuses on characterizing \trace{}'s statistical properties (stability, confidence intervals, ensemble filtering) rather than on a head-to-head fidelity competition. A direct numeric comparison with Anchors and CORELS was not included because these methods differ fundamentally in scope: Anchors produces local rules per instance, and CORELS is restricted to binary features. A more comprehensive empirical evaluation against recent global rule extraction methods such as Bayesian Rule Lists~\citep{letham2015interpretable} and born-again trees~\citep{breiman1996born} would strengthen future iterations of this work.
+
+\paragraph{Challenges in continuous domains.}
+While \trace{} supports regression, our experiments reveal that axis-aligned decision trees struggle to stably approximate smooth continuous functions, often yielding lower fidelity and near-zero stability compared to classification tasks. Alternative surrogate models (e.g., linear model trees or spline-based rules) may be better suited for these domains.
+
+
+% ============================================================
+\section{Conclusion and Future Work}
+\label{sec:conclusion}
+% ============================================================
+
+We have presented \trace{}, a model-agnostic framework for extracting human-readable IF--THEN rules from black-box models through surrogate decision-tree approximation. The framework advances the state of global model explanation along five axes. First, it provides a rigorous evaluation protocol that jointly quantifies fidelity, stability, and statistical uncertainty through bootstrap confidence intervals and PAC-learning bounds. Second, its ensemble bagging mechanism with fuzzy-signature matching identifies stable, high-frequency rules robust to data perturbation. Third, counterfactual rule scoring verifies that each surrogate split corresponds to a genuine black-box decision boundary, exposing phantom splits that would otherwise mislead auditors. Fourth, MDL-based rule selection provides an information-theoretic criterion for producing compact, well-grounded explanations. Fifth, its integrated regulatory compliance tools---configurable pruning, monotonicity validation, data augmentation, and automatic depth selection---address the practical requirements of deployment in regulated sectors.
+
+Our experimental evaluation on five benchmark datasets with three black-box models (RF, XGBoost, MLP) revealed several important insights. For classification, moderate-depth surrogates ($D_{\max}=4$) achieve fidelity up to 0.91 with compact rule sets. The CF+MDL pipeline evaluated across all 15 dataset--model combinations (\Cref{tab:cf_mdl_all}) demonstrates that: (i)~classification surrogates contain 8--68\% phantom splits (mean validity 0.59), while regression surrogates are nearly phantom-free (validity $\ge 0.97$); (ii)~Random Forest black-boxes produce the most phantoms (validity 0.32--0.45), providing a novel diagnostic of model--surrogate misalignment; (iii)~MDL achieves up to 97\% rule compression on classification tasks. On the Adult Census income prediction audit ($n \approx 45{,}000$), the full pipeline reduces 15 raw rules to 3 human-readable rules maintaining 91\% fidelity (95\% CI: $[0.906, 0.918]$), full monotonicity compliance, and near-perfect structural stability (0.987).
+
+\trace{} occupies a distinct position in the XAI landscape: model-agnostic, statistically validated, and boundary-verified global rule extraction. Its counterfactual scoring and MDL selection components address the fundamental limitation of surrogate-based explainers---that high fidelity does not guarantee meaningful individual splits---providing a level of rule-level verification that, to our knowledge, no other framework offers.
+
+\paragraph{Future work.}
+Several directions merit investigation. First, \emph{non-axis-aligned surrogates}: extending the framework to oblique decision trees could improve fidelity for models with diagonal decision boundaries. Second, \emph{temporal and sequential extensions}: adapting the framework for time-series models would broaden applicability. Third, \emph{adaptive counterfactual probing}: learning the optimal number of probes and noise scale per condition, rather than using fixed values, could improve both efficiency and sensitivity. Fourth, \emph{MDL extensions for regression}: the current binary entropy formulation is designed for classification; extending to regression via normalised MAE or quantile-based encoding would strengthen regression support. Finally, integrating \trace{}'s global rules with CIU's multi-level abstraction or SHAP's local attributions within a unified explanation dashboard represents a promising direction toward comprehensive XAI toolkits.
+
+The framework is implemented in Python and available at \url{https://github.com/mariotrerotola/trace-xai}.
+
+
+% ============================================================
+\bibliographystyle{plainnat}
+
+\begin{thebibliography}{35}
+
+\bibitem[Adebayo et~al.(2018)]{adebayo2018sanity}
+Julius Adebayo, Justin Gilmer, Michael Muelly, Ian Goodfellow, Moritz Hardt, and Been Kim.
+\newblock Sanity checks for saliency maps.
+\newblock In \emph{Advances in Neural Information Processing Systems 31 (NeurIPS)}, 2018.
+
+\bibitem[Agarwal et~al.(2022)]{agarwal2022openxai}
+Chirag Agarwal, Satyapriya Krishna, Eshika Saxena, Martin Pawelczyk, Nari Johnson, Ber Ber, Himabindu Lakkaraju, and Marinka Zitnik.
+\newblock {OpenXAI}: Towards a transparent evaluation of model explanations.
+\newblock In \emph{Advances in Neural Information Processing Systems 35 (NeurIPS)}, 2022.
+
+\bibitem[Alvarez-Melis and Jaakkola(2018)]{alvarez2018robustness}
+David Alvarez-Melis and Tommi~S. Jaakkola.
+\newblock On the robustness of interpretability methods.
+\newblock In \emph{ICML Workshop on Human Interpretability in Machine Learning (WHI)}, 2018.
+
+\bibitem[Andrews et~al.(1995)]{andrews1995survey}
+Robert Andrews, Joachim Diederich, and Alan~B. Tickle.
+\newblock Survey and critique of techniques for extracting rules from trained artificial neural networks.
+\newblock \emph{Knowledge-Based Systems}, 8(6):\penalty0 373--389, 1995.
+
+\bibitem[Angelino et~al.(2017)]{angelino2017learning}
+Elaine Angelino, Nicholas Larus-Stone, Daniel Alabi, Margo Seltzer, and Cynthia Rudin.
+\newblock Learning certifiably optimal rule lists for categorical data.
+\newblock In \emph{Proceedings of the 23rd ACM SIGKDD}, pp.\ 35--44, 2017.
+
+\bibitem[Arrieta et~al.(2020)]{arrieta2020xai}
+Alejandro~Barredo Arrieta et~al.
+\newblock Explainable {Artificial Intelligence} ({XAI}): Concepts, taxonomies, opportunities and challenges toward responsible {AI}.
+\newblock \emph{Information Fusion}, 58:\penalty0 82--115, 2020.
+
+\bibitem[Bastani et~al.(2017)]{bastani2017interpreting}
+Osbert Bastani, Carolyn Kim, and Hamsa Bastani.
+\newblock Interpreting blackbox models via model extraction.
+\newblock \emph{arXiv preprint arXiv:1705.08504}, 2017.
+
+\bibitem[Bhatt et~al.(2020)]{bhatt2020evaluating}
+Umang Bhatt, Adrian Weller, and Jos{\'e}~M.~F. Moura.
+\newblock Evaluating and aggregating feature-based model explanations.
+\newblock In \emph{IJCAI}, pp.\ 3016--3022, 2020.
+
+\bibitem[Breiman(1996)]{breiman1996born}
+Leo Breiman and Nong Shang.
+\newblock Born again trees.
+\newblock Technical report, University of California, Berkeley, 1996.
+
+\bibitem[Breiman(2001)]{breiman2001random}
+Leo Breiman.
+\newblock Random forests.
+\newblock \emph{Machine Learning}, 45(1):\penalty0 5--32, 2001.
+
+\bibitem[Contreras et~al.(2022)]{contreras2022dexire}
+Victor Contreras, Niccol\`{o} Marini, Lora Fanda, Gaetano Manzo, Yazan Mualla, Jean-Paul Calbimonte, Michael Schumacher, and Davide Calvaresi.
+\newblock A {DEXiRE} for extracting propositional rules from neural networks via binarization.
+\newblock \emph{Electronics}, 11(24):\penalty0 4171, 2022.
+
+\bibitem[Craven and Shavlik(1996)]{craven1996extracting}
+Mark~W. Craven and Jude~W. Shavlik.
+\newblock Extracting tree-structured representations of trained networks.
+\newblock In \emph{NIPS 8}, pp.\ 24--30, 1996.
+
+\bibitem[{European Union}(2024)]{eu2024aiact}
+{European Union}.
+\newblock Regulation ({EU}) 2024/1689 --- {Artificial Intelligence Act}.
+\newblock \emph{Official Journal of the European Union}, 2024.
+
+\bibitem[Fisher et~al.(2019)]{fisher2019all}
+Aaron Fisher, Cynthia Rudin, and Francesca Dominici.
+\newblock All models are wrong, but many are useful.
+\newblock \emph{JMLR}, 20(177):\penalty0 1--81, 2019.
+
+\bibitem[Fr{\"a}mling(1996)]{framling1996}
+Kary Fr{\"a}mling.
+\newblock \emph{Mod{\'e}lisation et apprentissage des pr{\'e}f{\'e}rences par r{\'e}seaux de neurones pour l'aide {\`a} la d{\'e}cision multicrit{\`e}re}.
+\newblock PhD thesis, INSA de Lyon, 1996.
+
+\bibitem[Fr{\"a}mling(2020)]{framling2020ciu}
+Kary Fr{\"a}mling.
+\newblock Contextual importance and utility in {R}: The `ciu' package.
+\newblock In \emph{AAAI 2021 Workshop on Explainable Agency in AI}, 2021.
+
+\bibitem[Hooker et~al.(2019)]{hooker2019benchmark}
+Sara Hooker, Dumitru Erhan, Pieter-Jan Kindermans, and Been Kim.
+\newblock A benchmark for interpretability methods in deep neural networks.
+\newblock In \emph{NeurIPS 32}, 2019.
+
+\bibitem[Jaccard(1901)]{jaccard1901etude}
+Paul Jaccard.
+\newblock \'{E}tude comparative de la distribution florale dans une portion des {Alpes} et du {Jura}.
+\newblock \emph{Bull.\ Soc.\ Vaudoise Sci.\ Nat.}, 37:\penalty0 547--579, 1901.
+
+\bibitem[Jain and Wallace(2019)]{jain2019attention}
+Sarthak Jain and Byron~C. Wallace.
+\newblock Attention is not explanation.
+\newblock In \emph{NAACL}, pp.\ 3543--3556, 2019.
+
+\bibitem[Krishna et~al.(2022)]{krishna2022disagreement}
+Satyapriya Krishna, Tessa Han, Alex Gu, Steven Wu, Shahin Jabbari, and Himabindu Lakkaraju.
+\newblock The disagreement problem in explainable machine learning.
+\newblock \emph{arXiv:2202.01602}, 2022.
+
+\bibitem[Letham et~al.(2015)]{letham2015interpretable}
+Benjamin Letham, Cynthia Rudin, Tyler~H. McCormick, and David Madigan.
+\newblock Interpretable classifiers using rules and {B}ayesian analysis.
+\newblock \emph{Ann.\ Appl.\ Stat.}, 9(3):\penalty0 1350--1371, 2015.
+
+\bibitem[Li et~al.(2023)]{li2023m4}
+Xuhong Li, Mengnan Du, Jiamin Chen, Yekun Chai, Himabindu Lakkaraju, and Haoyi Xiong.
+\newblock {M4}: A unified {XAI} benchmark for faithfulness evaluation.
+\newblock In \emph{NeurIPS 36, Datasets and Benchmarks}, 2023.
+
+\bibitem[Lundberg and Lee(2017)]{lundberg2017unified}
+Scott~M. Lundberg and Su-In Lee.
+\newblock A unified approach to interpreting model predictions.
+\newblock In \emph{NeurIPS 30}, 2017.
+
+\bibitem[Lundberg et~al.(2020)]{lundberg2020local}
+Scott~M. Lundberg et~al.
+\newblock From local explanations to global understanding with explainable {AI} for trees.
+\newblock \emph{Nature Machine Intelligence}, 2:\penalty0 56--67, 2020.
+
+\bibitem[Molnar(2022)]{molnar2022interpretable}
+Christoph Molnar.
+\newblock \emph{Interpretable Machine Learning}.
+\newblock 2nd edition, 2022.
+\newblock \url{https://christophm.github.io/interpretable-ml-book/}.
+
+\bibitem[Mothilal et~al.(2020)]{mothilal2020explaining}
+Ramaravind~K. Mothilal, Amit Sharma, and Chenhao Tan.
+\newblock Explaining machine learning classifiers through diverse counterfactual explanations.
+\newblock In \emph{FAT*}, pp.\ 607--617, 2020.
+
+\bibitem[Ribeiro et~al.(2016)]{ribeiro2016why}
+Marco~Tulio Ribeiro, Sameer Singh, and Carlos Guestrin.
+\newblock ``{Why} should {I} trust you?''
+\newblock In \emph{KDD}, pp.\ 1135--1144, 2016.
+
+\bibitem[Ribeiro et~al.(2018)]{ribeiro2018anchors}
+Marco~Tulio Ribeiro, Sameer Singh, and Carlos Guestrin.
+\newblock Anchors: High-precision model-agnostic explanations.
+\newblock In \emph{AAAI}, vol.~32, 2018.
+
+\bibitem[Rudin(2019)]{rudin2019stop}
+Cynthia Rudin.
+\newblock Stop explaining black box machine learning models for high stakes decisions and use interpretable models instead.
+\newblock \emph{Nature Machine Intelligence}, 1:\penalty0 206--215, 2019.
+
+\bibitem[Selvaraju et~al.(2017)]{selvaraju2017gradcam}
+Ramprasaath~R. Selvaraju et~al.
+\newblock {Grad-CAM}: Visual explanations from deep networks via gradient-based localization.
+\newblock In \emph{ICCV}, pp.\ 618--626, 2017.
+
+\bibitem[Shapley(1953)]{shapley1953value}
+Lloyd~S. Shapley.
+\newblock A value for $n$-person games.
+\newblock In \emph{Contributions to the Theory of Games II}, pp.\ 307--317. Princeton, 1953.
+
+\bibitem[Sundararajan et~al.(2017)]{sundararajan2017axiomatic}
+Mukund Sundararajan, Ankur Taly, and Qiqi Yan.
+\newblock Axiomatic attribution for deep networks.
+\newblock In \emph{ICML}, vol.~70, pp.\ 3319--3328, 2017.
+
+\bibitem[Rissanen(1978)]{rissanen1978modeling}
+Jorma Rissanen.
+\newblock Modeling by shortest data description.
+\newblock \emph{Automatica}, 14(5):\penalty0 465--471, 1978.
+
+\bibitem[Gr{\"u}nwald(2007)]{grunwald2007minimum}
+Peter~D. Gr{\"u}nwald.
+\newblock \emph{The Minimum Description Length Principle}.
+\newblock MIT Press, 2007.
+
+\bibitem[Bartlett and Mendelson(2002)]{bartlett2002rademacher}
+Peter~L. Bartlett and Shahar Mendelson.
+\newblock Rademacher and {G}aussian complexities: Risk bounds and structural results.
+\newblock \emph{Journal of Machine Learning Research}, 3:\penalty0 463--482, 2002.
+
+\bibitem[Blumer et~al.(1989)]{blumer1989learnability}
+Anselm Blumer, Andrzej Ehrenfeucht, David Haussler, and Manfred~K. Warmuth.
+\newblock Learnability and the {V}apnik-{C}hervonenkis dimension.
+\newblock \emph{Journal of the ACM}, 36(4):\penalty0 929--965, 1989.
+
+\bibitem[Wachter et~al.(2018)]{wachter2018counterfactual}
+Sandra Wachter, Brent Mittelstadt, and Chris Russell.
+\newblock Counterfactual explanations without opening the black box.
+\newblock \emph{Harvard J.\ Law \& Tech.}, 31(2):\penalty0 842--887, 2018.
+
+\bibitem[Wiegreffe and Pinter(2019)]{wiegreffe2019attention}
+Sarah Wiegreffe and Yuval Pinter.
+\newblock Attention is not not explanation.
+\newblock In \emph{EMNLP-IJCNLP}, pp.\ 11--20, 2019.
+
+\bibitem[Zarlenga et~al.(2021)]{zarlenga2021eclaire}
+Mateo~Espinosa Zarlenga, Zohreh Shams, and Mateja Jamnik.
+\newblock Efficient decompositional rule extraction for deep neural networks.
+\newblock \emph{arXiv preprint arXiv:2111.12628}, 2021.
+
+\end{thebibliography}
+
+\end{document}

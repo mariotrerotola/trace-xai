@@ -126,22 +126,8 @@ class TestRuleSet:
         assert empty.rule_signatures() == frozenset()
 
 
-class TestRuleRegression:
-    def test_regression_rule_str(self):
-        r = Rule(
-            conditions=(Condition("f1", "<=", 1.0),),
-            prediction="42.1234",
-            samples=50,
-            confidence=1.0,
-            leaf_id=1,
-            prediction_value=42.1234,
-        )
-        text = str(r)
-        assert "THEN value = 42.1234" in text
-        assert "samples=50" in text
-        assert "confidence" not in text
-
-    def test_classification_rule_str_unchanged(self):
+class TestRuleStr:
+    def test_classification_rule_str(self):
         r = Rule(
             conditions=(Condition("f1", "<=", 1.0),),
             prediction="setosa",

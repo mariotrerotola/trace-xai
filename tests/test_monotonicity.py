@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 from sklearn.datasets import load_iris
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.ensemble import RandomForestClassifier
 
 from trace_xai import (
     Explainer,
@@ -53,78 +53,72 @@ class TestValidateMonotonicity:
         assert report.is_compliant
         assert len(report.violations) == 0
 
-    def test_regression_violation_detected(self):
-        """Increasing constraint on A, but higher A → lower prediction."""
+    def test_classification_violation_detected(self):
+        """Increasing constraint on A, but class changes in wrong direction."""
         rules = (
             Rule(
                 conditions=(Condition("A", "<=", 5.0),),
-                prediction="10.0000",
+                prediction="high",
                 samples=50,
-                confidence=1.0,
+                confidence=0.9,
                 leaf_id=1,
-                prediction_value=10.0,
             ),
             Rule(
                 conditions=(Condition("A", ">", 5.0),),
-                prediction="3.0000",
+                prediction="low",
                 samples=50,
-                confidence=1.0,
+                confidence=0.9,
                 leaf_id=2,
-                prediction_value=3.0,
             ),
         )
-        ruleset = RuleSet(rules=rules, feature_names=("A",), class_names=())
+        ruleset = RuleSet(rules=rules, feature_names=("A",), class_names=("low", "high"))
         report = validate_monotonicity(ruleset, {"A": 1})
         assert not report.is_compliant
         assert len(report.violations) > 0
         assert report.violations[0].feature == "A"
         assert report.violations[0].expected_direction == 1
 
-    def test_regression_no_violation(self):
-        """Increasing constraint on A, higher A → higher prediction: OK."""
+    def test_classification_no_violation_same_class(self):
+        """Increasing constraint on A, same class both sides: no violation."""
         rules = (
             Rule(
                 conditions=(Condition("A", "<=", 5.0),),
-                prediction="3.0000",
+                prediction="high",
                 samples=50,
-                confidence=1.0,
+                confidence=0.9,
                 leaf_id=1,
-                prediction_value=3.0,
             ),
             Rule(
                 conditions=(Condition("A", ">", 5.0),),
-                prediction="10.0000",
+                prediction="high",
                 samples=50,
-                confidence=1.0,
+                confidence=0.9,
                 leaf_id=2,
-                prediction_value=10.0,
             ),
         )
-        ruleset = RuleSet(rules=rules, feature_names=("A",), class_names=())
+        ruleset = RuleSet(rules=rules, feature_names=("A",), class_names=("low", "high"))
         report = validate_monotonicity(ruleset, {"A": 1})
         assert report.is_compliant
 
     def test_decreasing_violation(self):
-        """Decreasing constraint on A, but higher A → higher prediction."""
+        """Decreasing constraint on A, but class changes."""
         rules = (
             Rule(
                 conditions=(Condition("A", "<=", 5.0),),
-                prediction="3.0000",
+                prediction="low",
                 samples=50,
-                confidence=1.0,
+                confidence=0.9,
                 leaf_id=1,
-                prediction_value=3.0,
             ),
             Rule(
                 conditions=(Condition("A", ">", 5.0),),
-                prediction="10.0000",
+                prediction="high",
                 samples=50,
-                confidence=1.0,
+                confidence=0.9,
                 leaf_id=2,
-                prediction_value=10.0,
             ),
         )
-        ruleset = RuleSet(rules=rules, feature_names=("A",), class_names=())
+        ruleset = RuleSet(rules=rules, feature_names=("A",), class_names=("low", "high"))
         report = validate_monotonicity(ruleset, {"A": -1})
         assert not report.is_compliant
 
@@ -133,22 +127,20 @@ class TestValidateMonotonicity:
         rules = (
             Rule(
                 conditions=(Condition("A", "<=", 5.0),),
-                prediction="10.0000",
+                prediction="high",
                 samples=50,
-                confidence=1.0,
+                confidence=0.9,
                 leaf_id=1,
-                prediction_value=10.0,
             ),
             Rule(
                 conditions=(Condition("A", ">", 5.0),),
-                prediction="3.0000",
+                prediction="low",
                 samples=50,
-                confidence=1.0,
+                confidence=0.9,
                 leaf_id=2,
-                prediction_value=3.0,
             ),
         )
-        ruleset = RuleSet(rules=rules, feature_names=("A",), class_names=())
+        ruleset = RuleSet(rules=rules, feature_names=("A",), class_names=("low", "high"))
         report = validate_monotonicity(ruleset, {"A": 0})
         assert report.is_compliant
 
@@ -165,22 +157,20 @@ class TestFilterViolations:
         rules = (
             Rule(
                 conditions=(Condition("A", "<=", 5.0),),
-                prediction="10.0000",
+                prediction="high",
                 samples=50,
-                confidence=1.0,
+                confidence=0.9,
                 leaf_id=1,
-                prediction_value=10.0,
             ),
             Rule(
                 conditions=(Condition("A", ">", 5.0),),
-                prediction="3.0000",
+                prediction="low",
                 samples=50,
-                confidence=1.0,
+                confidence=0.9,
                 leaf_id=2,
-                prediction_value=3.0,
             ),
         )
-        ruleset = RuleSet(rules=rules, feature_names=("A",), class_names=())
+        ruleset = RuleSet(rules=rules, feature_names=("A",), class_names=("low", "high"))
         report = validate_monotonicity(ruleset, {"A": 1})
         filtered = filter_monotonic_violations(ruleset, report)
         assert filtered.num_rules < ruleset.num_rules

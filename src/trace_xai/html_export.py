@@ -57,13 +57,11 @@ def export_html(result: ExplanationResult, output_path: str) -> None:
                 "prediction": html.escape(str(r.prediction)),
                 "confidence": r.confidence,
                 "samples": r.samples,
-                "is_regression": r.prediction_value is not None,
-                "prediction_value": r.prediction_value,
                 "frequency": sr.frequency,
             })
 
     page = _build_html(
-        rules_data, report_text, result._task,
+        rules_data, report_text,
         pruned_data=pruned_data,
         pruning_summary=pruning_summary,
         mono_text=mono_text,
@@ -85,8 +83,6 @@ def _extract_rules_data(rules) -> list[dict]:
             "prediction": html.escape(str(rule.prediction)),
             "confidence": rule.confidence,
             "samples": rule.samples,
-            "is_regression": rule.prediction_value is not None,
-            "prediction_value": rule.prediction_value,
         })
     return data
 
@@ -95,12 +91,8 @@ def _build_rules_table(rules_data: list[dict], table_id: str, extra_col: str = "
     """Build an HTML table from rules data."""
     rows = []
     for i, r in enumerate(rules_data, 1):
-        if r["is_regression"]:
-            pred_cell = f"value = {r['prediction_value']:.4f}"
-            conf_cell = ""
-        else:
-            pred_cell = r["prediction"]
-            conf_cell = f"{r['confidence']:.2%}"
+        pred_cell = r["prediction"]
+        conf_cell = f"{r['confidence']:.2%}"
         freq_cell = f"<td>{r['frequency']:.0%}</td>" if "frequency" in r else ""
         rows.append(
             f"<tr data-class=\"{r['prediction']}\">"
@@ -133,7 +125,6 @@ def _build_rules_table(rules_data: list[dict], table_id: str, extra_col: str = "
 def _build_html(
     rules_data: list[dict],
     report_text: str,
-    task: str,
     *,
     pruned_data: list[dict] | None = None,
     pruning_summary: str = "",
@@ -214,6 +205,18 @@ def _build_html(
 </head>
 <body>
 <h1>TRACE-XAI &mdash; Explanation Report</h1>
+
+<div class="disclaimer" style="background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px; padding: 1rem; margin-bottom: 1.5rem; font-size: 0.85rem;">
+  <strong>Interpretability Disclaimer:</strong> The rules below describe the
+  <em>behaviour</em> of the surrogate approximation, not causal relationships in the data.
+  A rule such as &ldquo;IF age &gt; 45 THEN deny&rdquo; means the surrogate model
+  <em>behaves as if</em> this pattern holds &mdash; it does not imply that age causally
+  determines the outcome. Fidelity indicates how closely the surrogate matches the
+  black-box model, not how well it captures the true decision logic. Two surrogates
+  with identical fidelity can produce different rules. Always consider stability
+  metrics alongside fidelity when assessing rule reliability.
+</div>
+
 <div class="report">{report_text}</div>
 
 <h2>Rules</h2>

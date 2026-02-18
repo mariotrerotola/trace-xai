@@ -42,7 +42,7 @@ Dynamic: license-file
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-57%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-103%20passed-brightgreen.svg)]()
 
 **TRACE** (`trace-xai`) is a model-agnostic explainability framework that
 extracts human-readable IF-THEN rules from *any* machine learning model —
@@ -66,6 +66,9 @@ confidence intervals, and rule-stability analysis.
 | **Bootstrap Stability** | Jaccard-based rule stability across bootstrap resamples. |
 | **Confidence Intervals** | Percentile bootstrap CIs for fidelity and accuracy. |
 | **Normalised Complexity** | `avg_conditions_per_feature` and `interaction_strength` metrics. |
+| **Regulatory Pruning** | Post-hoc rule simplification: confidence/sample filtering, redundant condition removal, condition truncation. |
+| **Monotonicity Constraints** | Enforce domain-consistent rules (e.g. more income → less risk) during fitting and validate post-hoc. |
+| **Ensemble Rule Extraction** | Bagging of surrogate trees with fuzzy signature matching for stable, audit-ready rules. |
 | **Interactive HTML Export** | Self-contained HTML report with filterable, sortable, searchable rules. |
 | **Visualization** | matplotlib tree plots and Graphviz DOT export. |
 | **Extensible Surrogates** | Protocol-based surrogate interface; decision-tree implemented, rule-list and GAM placeholders ready. |
@@ -267,6 +270,7 @@ Explainer(model, feature_names, class_names=None, *, task=None)
 
 ```python
 extract_rules(X, *, y=None, max_depth=5, min_samples_leaf=5,
+              ccp_alpha=0.0, monotonic_constraints=None, pruning=None,
               X_val=None, y_val=None, validation_split=None,
               surrogate_type="decision_tree") -> ExplanationResult
 ```
@@ -277,6 +281,9 @@ extract_rules(X, *, y=None, max_depth=5, min_samples_leaf=5,
 | `y` | None | True labels (for accuracy metrics only). |
 | `max_depth` | 5 | Surrogate tree depth. |
 | `min_samples_leaf` | 5 | Min samples per leaf. |
+| `ccp_alpha` | 0.0 | Cost-complexity pruning for the sklearn tree. |
+| `monotonic_constraints` | None | Feature-name → direction (`+1`/`-1`/`0`) map. |
+| `pruning` | None | `PruningConfig` for post-hoc rule pruning. |
 | `X_val` | None | External validation set. |
 | `y_val` | None | Labels for validation set. |
 | `validation_split` | None | Internal split ratio (0-1). Mutually exclusive with `X_val`. |
@@ -293,7 +300,23 @@ cross_validate_fidelity(X, *, y=None, n_folds=5, max_depth=5,
 
 ```python
 compute_stability(X, *, n_bootstraps=20, max_depth=5,
-                  min_samples_leaf=5, random_state=42) -> StabilityReport
+                  min_samples_leaf=5, random_state=42,
+                  tolerance=None) -> StabilityReport
+```
+
+#### `Explainer.prune_rules()`
+
+```python
+prune_rules(result, config) -> ExplanationResult
+```
+
+#### `Explainer.extract_stable_rules()`
+
+```python
+extract_stable_rules(X, *, y=None, n_estimators=20, frequency_threshold=0.5,
+                     tolerance=0.01, max_depth=5, min_samples_leaf=5,
+                     ccp_alpha=0.0, monotonic_constraints=None,
+                     random_state=42) -> ExplanationResult
 ```
 
 #### `Explainer.compute_confidence_intervals()`
@@ -308,7 +331,7 @@ compute_confidence_intervals(result, X, *, y=None, n_bootstraps=1000,
 
 | Class | Key Fields |
 |-------|------------|
-| `ExplanationResult` | `rules`, `report`, `surrogate`, `train_report` |
+| `ExplanationResult` | `rules`, `report`, `surrogate`, `train_report`, `pruned_rules`, `pruning_report`, `monotonicity_report`, `ensemble_report`, `stable_rules` |
 | `RuleSet` | `rules`, `num_rules`, `avg_conditions`, `max_conditions`, `avg_conditions_per_feature`, `interaction_strength` |
 | `Rule` | `conditions`, `prediction`, `confidence`, `samples`, `prediction_value` |
 | `Condition` | `feature`, `operator`, `threshold` |
@@ -316,6 +339,12 @@ compute_confidence_intervals(result, X, *, y=None, n_bootstraps=1000,
 | `CVFidelityReport` | `mean_fidelity`, `std_fidelity`, `fold_reports`, `n_folds` |
 | `StabilityReport` | `mean_jaccard`, `std_jaccard`, `pairwise_jaccards`, `n_bootstraps` |
 | `ConfidenceInterval` | `lower`, `upper`, `point_estimate`, `confidence_level` |
+| `PruningConfig` | `min_confidence`, `min_samples`, `min_samples_fraction`, `max_conditions`, `remove_redundant` |
+| `PruningReport` | `original_count`, `pruned_count`, `removed_low_confidence`, `removed_low_samples`, `conditions_simplified` |
+| `MonotonicityReport` | `constraints`, `violations`, `is_compliant` |
+| `MonotonicityViolation` | `rule_index`, `rule`, `feature`, `expected_direction`, `description` |
+| `EnsembleReport` | `n_estimators`, `frequency_threshold`, `total_unique_rules`, `stable_rule_count`, `tolerance` |
+| `StableRule` | `rule`, `frequency`, `signature`, `variant_count` |
 
 ---
 
@@ -347,6 +376,9 @@ trace-xai/
 │   ├── explainer.py           # Explainer, ExplanationResult
 │   ├── ruleset.py             # Condition, Rule, RuleSet
 │   ├── report.py              # FidelityReport, CVFidelityReport, StabilityReport, ConfidenceInterval
+│   ├── pruning.py             # PruningConfig, PruningReport, prune_ruleset
+│   ├── monotonicity.py        # MonotonicityReport, validate_monotonicity
+│   ├── ensemble.py            # EnsembleReport, StableRule, extract_ensemble_rules
 │   ├── visualization.py       # plot_surrogate_tree, export_dot
 │   ├── html_export.py         # Interactive HTML export
 │   └── surrogates/            # Pluggable surrogate backends
@@ -359,7 +391,10 @@ trace-xai/
 │   ├── test_ruleset.py        # Rule data classes + complexity metrics
 │   ├── test_report.py         # Fidelity report + bootstrap CI tests
 │   ├── test_regression.py     # Full regression support tests
-│   └── test_html_export.py    # HTML export tests
+│   ├── test_html_export.py    # HTML export tests
+│   ├── test_pruning.py        # Regulatory pruning tests
+│   ├── test_monotonicity.py   # Monotonicity constraint tests
+│   └── test_ensemble.py       # Ensemble rule extraction tests
 ├── examples/
 │   ├── demo.py                # Basic Iris demo
 │   └── demo_complex.py        # Advanced multi-class demo

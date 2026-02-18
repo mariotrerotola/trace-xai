@@ -18,7 +18,7 @@ pip install trace-xai
 ### From source (development)
 
 ```bash
-git clone https://github.com/your-username/trace-xai.git
+git clone https://github.com/mariotrerotola/trace-xai.git
 cd trace-xai
 pip install -e ".[dev]"
 ```
@@ -120,6 +120,10 @@ black-box:
 
 - Read the [User Guide](user_guide.md) for hold-out evaluation, cross-validation,
   stability analysis, regression, regulatory pruning, monotonicity constraints,
-  and ensemble rule extraction.
+  ensemble rule extraction, data augmentation, categorical decoding,
+  hyperparameter presets, counterfactual rule scoring, MDL rule selection,
+  oblique and sparse oblique tree surrogates, and adaptive tolerance.
 - Read the [API Reference](api_reference.md) for complete method signatures.
-- Read the [Methodology](methodology.md) for the scientific background.
+- Read the [Methodology](methodology.md) for the scientific background,
+  including theoretical fidelity bounds, the MDL principle, and oblique
+  surrogate tree methodology.

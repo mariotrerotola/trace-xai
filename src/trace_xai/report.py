@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 
 import numpy as np
 from numpy.typing import ArrayLike
-from sklearn.metrics import accuracy_score, mean_squared_error, r2_score
+from sklearn.metrics import accuracy_score
 
 
 # ── Confidence Interval ─────────────────────────────────────────────────
@@ -79,14 +79,6 @@ class FidelityReport:
         Bootstrap CI for fidelity (populated by ``compute_confidence_intervals``).
     accuracy_ci : ConfidenceInterval or None
         Bootstrap CI for accuracy (populated by ``compute_confidence_intervals``).
-    fidelity_r2 : float or None
-        R² between surrogate and black-box (regression only).
-    fidelity_mse : float or None
-        MSE between surrogate and black-box (regression only).
-    accuracy_r2 : float or None
-        R² of surrogate vs true labels (regression only).
-    accuracy_mse : float or None
-        MSE of surrogate vs true labels (regression only).
     """
 
     fidelity: float
@@ -105,29 +97,18 @@ class FidelityReport:
     interaction_strength: Optional[float] = None
     fidelity_ci: Optional[ConfidenceInterval] = None
     accuracy_ci: Optional[ConfidenceInterval] = None
-    fidelity_r2: Optional[float] = None
-    fidelity_mse: Optional[float] = None
-    accuracy_r2: Optional[float] = None
-    accuracy_mse: Optional[float] = None
 
     def __str__(self) -> str:
         lines = [
             "=== Fidelity Report ===",
             f"  Evaluation type: {self.evaluation_type}",
             f"  Fidelity (surrogate vs black-box): {self.fidelity:.4f}",
+            f"  NOTE: Rules describe surrogate behaviour, not causal relationships.",
         ]
         if self.accuracy is not None:
             lines.append(f"  Surrogate accuracy (vs true labels): {self.accuracy:.4f}")
         if self.blackbox_accuracy is not None:
             lines.append(f"  Black-box accuracy (vs true labels): {self.blackbox_accuracy:.4f}")
-        if self.fidelity_r2 is not None:
-            lines.append(f"  Fidelity R²: {self.fidelity_r2:.4f}")
-        if self.fidelity_mse is not None:
-            lines.append(f"  Fidelity MSE: {self.fidelity_mse:.4f}")
-        if self.accuracy_r2 is not None:
-            lines.append(f"  Surrogate R² (vs true labels): {self.accuracy_r2:.4f}")
-        if self.accuracy_mse is not None:
-            lines.append(f"  Surrogate MSE (vs true labels): {self.accuracy_mse:.4f}")
         lines += [
             f"  Number of rules: {self.num_rules}",
             f"  Avg rule length: {self.avg_rule_length:.2f}",
@@ -279,56 +260,3 @@ def compute_fidelity_report(
     )
 
 
-def compute_regression_fidelity_report(
-    surrogate,
-    X: ArrayLike,
-    y_bb: np.ndarray,
-    y_true: Optional[np.ndarray],
-    num_rules: int,
-    avg_rule_length: float,
-    max_rule_length: int,
-    *,
-    evaluation_type: str = "in_sample",
-    avg_conditions_per_feature: Optional[float] = None,
-    interaction_strength: Optional[float] = None,
-) -> FidelityReport:
-    """Compute fidelity metrics for a regression surrogate."""
-    X = np.asarray(X)
-    y_surr = surrogate.predict(X)
-
-    fidelity_r2 = float(r2_score(y_bb, y_surr))
-    fidelity_mse = float(mean_squared_error(y_bb, y_surr))
-    # Use 1 - normalised MSE as a [0,1] fidelity score
-    var_bb = float(np.var(y_bb))
-    fidelity = fidelity_r2 if var_bb > 0 else 1.0
-
-    accuracy_r2: Optional[float] = None
-    accuracy_mse: Optional[float] = None
-    accuracy: Optional[float] = None
-    blackbox_accuracy: Optional[float] = None
-    if y_true is not None:
-        accuracy_r2 = float(r2_score(y_true, y_surr))
-        accuracy_mse = float(mean_squared_error(y_true, y_surr))
-        accuracy = accuracy_r2
-        blackbox_r2 = float(r2_score(y_true, y_bb))
-        blackbox_accuracy = blackbox_r2
-
-    return FidelityReport(
-        fidelity=fidelity,
-        accuracy=accuracy,
-        blackbox_accuracy=blackbox_accuracy,
-        num_rules=num_rules,
-        avg_rule_length=avg_rule_length,
-        max_rule_length=max_rule_length,
-        surrogate_depth=surrogate.get_depth(),
-        surrogate_n_leaves=surrogate.get_n_leaves(),
-        num_samples=len(X),
-        class_fidelity={},
-        evaluation_type=evaluation_type,
-        avg_conditions_per_feature=avg_conditions_per_feature,
-        interaction_strength=interaction_strength,
-        fidelity_r2=fidelity_r2,
-        fidelity_mse=fidelity_mse,
-        accuracy_r2=accuracy_r2,
-        accuracy_mse=accuracy_mse,
-    )
