@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from itertools import combinations
-from typing import Dict, Optional, Sequence
+from typing import Dict, Optional, Sequence, Union
 
 import numpy as np
 from numpy.typing import ArrayLike
@@ -177,7 +177,7 @@ class Explainer:
         counterfactual_noise_scale: float = 0.01,
         counterfactual_n_probes: int = 20,
         mdl_selection: Optional[str] = None,
-        mdl_precision_bits: int = 16,
+        mdl_precision_bits: Union[int, str] = "auto",
     ) -> ExplanationResult:
         """Extract interpretable rules from the black-box model.
 
@@ -896,7 +896,7 @@ class Explainer:
         X: ArrayLike,
         *,
         method: str = "forward",
-        precision_bits: int = 16,
+        precision_bits: Union[int, str] = "auto",
     ):
         """Select an optimal subset of rules using the MDL principle.
 

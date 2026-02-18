@@ -467,7 +467,9 @@ MDL(rule) = L(model) + L(data | model)
 ```
 
 - **L(model)** — bits to encode the rule structure:
-  `n_conditions × (log₂(n_features) + precision_bits) + log₂(n_classes)`
+  `n_conditions × (log₂(n_features) + precision_bits) + log₂(n_classes)`.
+  When `precision_bits="auto"` (the default), the value is set to
+  `ceil(log₂(median unique values per feature))`, clamped to [4, 32]
 - **L(data | model)** — bits to encode misclassifications on covered samples:
   `coverage × H(error_rate)`, where H is the binary entropy function.
 
@@ -481,7 +483,19 @@ coverage`). This produces a minimal ruleset.
 whose cost exceeds its null savings by the largest margin. Stop when no rule
 can be profitably removed.
 
-### 11.3 Complementarity with Other Methods
+### 11.3 Coverage Trade-off
+
+MDL selection optimises description length, not sample coverage.  After
+selection the retained rules may not cover all training samples — instances
+in ambiguous boundary regions (where the surrogate assigns low-confidence
+predictions) tend to fall under rules that are too expensive to justify
+their MDL cost.  This is an expected trade-off: the selected ruleset is
+compact and high-fidelity *on the samples it covers*, but users should be
+aware that uncovered samples have no rule-based explanation.  Increasing
+`max_depth` or lowering `precision_bits` will increase coverage at the
+cost of a larger ruleset.
+
+### 11.4 Complementarity with Other Methods
 
 MDL selection is complementary to both frequency-based ensemble selection and
 counterfactual scoring:

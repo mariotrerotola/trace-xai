@@ -9,6 +9,7 @@ from trace_xai import Explainer
 from trace_xai.mdl_selection import (
     MDLSelectionReport,
     RuleMDLScore,
+    _auto_precision_bits,
     binary_entropy,
     compute_rule_model_cost,
     score_ruleset_mdl,
@@ -192,4 +193,37 @@ class TestExplainerMDLMethod:
         )
         assert result.mdl_report is not None
         assert result.rules.num_rules == result.mdl_report.n_rules_selected
+
+
+class TestAutoPrecisionBits:
+    def test_returns_int_in_range(self, iris_setup):
+        _, X, _ = iris_setup
+        bits = _auto_precision_bits(X)
+        assert isinstance(bits, int)
+        assert 4 <= bits <= 32
+
+    def test_fewer_bits_than_default(self, iris_setup):
+        _, X, _ = iris_setup
+        bits = _auto_precision_bits(X)
+        assert bits < 16
+
+    def test_auto_default_works(self, iris_setup):
+        explainer, X, y = iris_setup
+        result = explainer.extract_rules(X, y=y, max_depth=3)
+        report = select_rules_mdl(
+            result.rules, explainer.model, X,
+            n_classes=len(explainer.class_names),
+        )
+        assert isinstance(report, MDLSelectionReport)
+        assert isinstance(report.precision_bits, int)
+
+    def test_explicit_int_still_works(self, iris_setup):
+        explainer, X, y = iris_setup
+        result = explainer.extract_rules(X, y=y, max_depth=3)
+        report = select_rules_mdl(
+            result.rules, explainer.model, X,
+            n_classes=len(explainer.class_names),
+            precision_bits=16,
+        )
+        assert report.precision_bits == 16
 

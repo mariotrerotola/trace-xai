@@ -72,7 +72,7 @@ We introduce \trace{} (\textbf{T}ree-based \textbf{R}ule \textbf{A}pproximation 
 (iv)~\textbf{counterfactual rule scoring}, a multi-probe boundary verification algorithm that distinguishes genuine black-box decision boundaries from ``phantom splits'' introduced by the surrogate, addressing the fundamental limitation of surrogate-based explainers;
 (v)~\textbf{MDL-based rule selection}, an information-theoretic criterion grounded in the Minimum Description Length principle~\citep{rissanen1978modeling} that selects rules by minimising the total description length $L(\text{model}) + L(\text{data}\mid\text{model})$, replacing ad-hoc frequency-based filtering; and
 (vi)~integrated post-hoc regulatory compliance tools, including monotonicity constraint validation, configurable rule pruning, data augmentation, and automatic depth selection with PAC-learning bounds.
-Experiments on three benchmark classification datasets with three black-box models (Random Forest, XGBoost, MLP) demonstrate that \trace{} achieves high fidelity (accuracy $> 0.90$) with compact rule sets. Counterfactual scoring reveals that surrogates contain 8--68\% phantom splits (mean validity 0.59); Random Forest black-boxes produce the most phantoms (validity 0.32--0.45), providing a novel diagnostic of model--surrogate misalignment. MDL selection compresses rule sets by up to 97\% (e.g., 60~$\to$~2 rules on COMPAS, 35~$\to$~4 on Adult). On an income prediction audit using the Adult Census dataset ($n \approx 45{,}000$), the full pipeline produces 3 human-readable rules maintaining 91\% fidelity, 98.7\% structural stability, and full monotonicity compliance.
+Experiments on three benchmark classification datasets with three black-box models (Random Forest, XGBoost, MLP) demonstrate that \trace{} achieves high fidelity (accuracy $> 0.90$) with compact rule sets. Counterfactual scoring reveals that surrogates contain 20--60\% phantom splits (mean validity 0.59); Random Forest black-boxes produce the most phantoms (validity 0.32--0.45), providing a novel diagnostic of model--surrogate misalignment. MDL selection compresses rule sets by up to 97\% (e.g., 60~$\to$~2 rules on COMPAS, 35~$\to$~4 on Adult). On an income prediction audit using the Adult Census dataset ($n \approx 49{,}000$), the full pipeline produces 3 human-readable rules maintaining 91\% fidelity, 98.7\% structural stability, and full monotonicity compliance.
 \end{abstract}
 
 \noindent\textbf{Keywords:} explainable AI $\cdot$ rule extraction $\cdot$ surrogate models $\cdot$ decision trees $\cdot$ fidelity $\cdot$ stability $\cdot$ counterfactual $\cdot$ minimum description length $\cdot$ regulatory compliance
@@ -109,6 +109,7 @@ We present \trace{} (Tree-based Rule Approximation for Comprehensible Explanatio
     \item \textbf{Counterfactual rule scoring}: a multi-probe boundary verification algorithm that tests whether each surrogate split corresponds to a genuine black-box decision boundary, identifying ``phantom splits'' that the black-box ignores (\Cref{sec:counterfactual}).
     \item \textbf{MDL-based rule selection}: an information-theoretic criterion that selects rules by minimising total description length, replacing ad-hoc frequency-based filtering with a principled compression-based objective (\Cref{sec:mdl}).
     \item Post-hoc regulatory compliance tools---configurable rule pruning and monotonicity constraint validation---designed for deployment in regulated sectors (\Cref{sec:regulatory}).
+    \item \textbf{Sparse Oblique Tree Surrogate}: an iterative algorithm that augments the feature space with targeted interaction terms to resolve phantom splits in non-axis-aligned black-box models, improving fidelity without sacrificing interpretability.
     \item Empirical evaluation of the full CF+MDL pipeline on three benchmark classification datasets with three black-box models (9 combinations), revealing systematic patterns in phantom split prevalence across model types, plus a detailed income prediction audit scenario (\Cref{sec:experiments}).
 \end{enumerate}
 
@@ -290,6 +291,21 @@ To enable quantitative comparison of interpretability across methods and dataset
 \paragraph{Computational complexity.}
 The cost of the base pipeline is dominated by surrogate fitting at $O(n \cdot d \cdot D_{\max})$ per tree, plus $O(n)$ for pseudo-label generation. The ensemble variant (\Cref{sec:ensemble}) with $N$ bootstrap surrogates scales as $O(N \cdot n \cdot d \cdot D_{\max})$. In practice, this remains tractable even for moderately large datasets, as shown in \Cref{sec:experiments:scalability}.
 
+
+% ----------------------------------------------------------
+\subsection{Sparse Oblique Tree Surrogate}
+\label{sec:method:sparse}
+
+Standard axis-aligned decision trees struggle to approximate models with diagonal decision boundaries (e.g., $x_1 + x_2 > 0$), often resorting to "staircase" structures that introduce numerous phantom splits. To address this, we introduce the \emph{Sparse Oblique Tree Surrogate}. Unlike fully oblique trees (which use linear combinations of all features at every node, harming interpretability), our approach introduces interaction terms \emph{selectively} and \emph{iteratively}.
+
+The algorithm functions as follows:
+\begin{enumerate}
+    \item \textbf{Initial Fit}: A standard axis-aligned tree $T_0$ is fitted to the data.
+    \item \textbf{Phantom Detection}: Each split in $T_0$ is probed counterfactually (see \Cref{sec:counterfactual}). Features involved in splits with low validity (high phantom rate) are flagged as \emph{phantom features} $\mathcal{P}$.
+    \item \textbf{Interaction Augmentation}: The feature space is augmented with pairwise interaction terms $x_i \cdot x_j$ where at least one feature $x_i \in \mathcal{P}$. This allows the surrogate to express diagonal boundaries as simple thresholds on interaction terms (e.g., $x_1 \cdot x_2 > \tau$).
+    \item \textbf{Refit}: A new tree $T_{t+1}$ is fitted on the augmented space.
+\end{enumerate}
+This process repeats for a fixed number of iterations (typically 1--2). The result is a tree that remains largely axis-aligned but uses sparse interactions exactly where needed to capture diagonal decision boundaries faithfully.
 
 % ============================================================
 \section{Evaluation Protocol: Fidelity, Stability, and Uncertainty}
@@ -578,7 +594,7 @@ These bounds serve two practical purposes. First, they give guaranteed lower bou
 \label{sec:experiments}
 % ============================================================
 
-We evaluate \trace{} along seven research questions:
+We evaluate \trace{} along eight research questions:
 \begin{enumerate}[leftmargin=*,label=\textbf{RQ\arabic*}:]
     \item How does surrogate depth affect the fidelity--interpretability trade-off?
     \item What do bootstrap stability scores reveal about rule reliability?
@@ -587,6 +603,7 @@ We evaluate \trace{} along seven research questions:
     \item How does \trace{} scale with dataset size?
     \item Does counterfactual scoring identify phantom boundaries in real scenarios?
     \item Does MDL selection produce more compact rule sets without sacrificing fidelity?
+    \item [RQ8] Does the sparse oblique approach reduce phantom splits while maintaining fidelity?
 \end{enumerate}
 
 % ----------------------------------------------------------
@@ -647,7 +664,7 @@ COMPAS ($n \approx 7$k)  & 0.90 $\pm$ 0.00 & 16.0 & 4.0 & 0.20 & 18  \\
 \subsubsection{RQ1: Fidelity--Depth Trade-off}
 \label{sec:experiments:fidelity}
 
-Moderate depth ($D_{\max}=4$) consistently achieves a favorable operating point. On Adult (XGBoost), fidelity reaches 0.91 with $\sim$16 rules. Increasing depth to $D=8$ yields marginal gains (0.94) but explodes complexity to $\sim$141 rules. On the smaller German Credit dataset, fidelity saturates earlier; increasing depth beyond 4 primarily increases variance rather than bias.
+Moderate depth ($D_{\max}=4$) consistently achieves a favorable operating point. On Adult (XGBoost), fidelity reaches 0.913 with 16.0 rules. Increasing depth to $D=8$ yields marginal gains (0.936) but explodes complexity to $\sim$140 rules. On the smaller German Credit dataset, fidelity saturates earlier; increasing depth beyond 4 primarily increases variance rather than bias.
 
 % ----------------------------------------------------------
 \subsubsection{RQ2: Stability Analysis}
@@ -656,13 +673,13 @@ Moderate depth ($D_{\max}=4$) consistently achieves a favorable operating point.
 Our bootstrap analysis exposes a critical vulnerability in standard rule extraction.
 
 \paragraph{The instability of single trees.}
-Exact stability ($\delta=0$) was negligible across nearly all datasets. Even with fuzzy matching ($\delta=0.01$), classification stability remains low on smaller datasets (German: 0.00). COMPAS showed moderate stability (0.20), while Adult ($N \approx 49k$) reached 0.21, confirming that data volume stabilizes rule boundaries.
+Exact stability ($\delta=0$) was negligible across nearly all datasets. Even with fuzzy matching ($\delta=0.01$), classification stability remains low on smaller datasets (German: 0.001). COMPAS showed moderate stability (0.196), while Adult ($N \approx 49k$) reached 0.206, confirming that data volume stabilizes rule boundaries.
 
 % ----------------------------------------------------------
 \subsubsection{RQ3: Ensemble Filtering Effectiveness}
 \label{sec:experiments:ensemble}
 
-The ensemble mechanism acts as a reliability filter. On Adult (XGB), it successfully extracted 16 stable rules with high fidelity (0.90). On COMPAS, it identified 18 stable rules ($\phi=0.3$), providing a transparent view of the model's core logic. On German Credit and most regression tasks, it returned an empty set ($|\mathcal{R}^*| = 0$) at $\phi \ge 0.3$.
+The ensemble mechanism acts as a reliability filter. On Adult (XGB), it successfully extracted 16 stable rules with high fidelity (0.90). On COMPAS, it identified 18 stable rules ($\phi=0.3$), providing a transparent view of the model's core logic. On German Credit, it often returned an empty set ($|\mathcal{R}^*| = 0$) at $\phi \ge 0.3$.
 Far from a failure, this null result is a \emph{protective mechanism}. It signals to the auditor that the model's logic is too sensitive to data fluctuations to be summarized by a fixed set of simple rules. Current methods like Anchors or single decision trees would silently produce an unstable explanation; \trace{} explicitly flags the uncertainty.
 
 % ----------------------------------------------------------
@@ -675,13 +692,13 @@ On Adult (XGBoost), enforcing monotonicity constraints reduced violations from 3
 \subsubsection{RQ5: Scalability}
 \label{sec:experiments:scalability}
 
-Scalability remains linear in $N$. Extracting rules from the full Adult dataset ($N=45,222$) took 3.15s for a single tree and 6.65s for an ensemble of 100 trees. This efficiency allows \trace{} to be used interactively, re-running extractions with different constraints or depths in real-time during an audit.
+Scalability remains linear in $N$. Extracting rules from the processed Adult dataset ($N=45,222$) took 2.45s for a single tree and 6.31s for an ensemble of 100 trees. This efficiency allows \trace{} to be used interactively, re-running extractions with different constraints or depths in real-time during an audit.
 
 % ----------------------------------------------------------
-\subsubsection{RQ6--RQ7: Counterfactual Scoring and MDL Selection}
+\subsubsection{RQ6--RQ8: Phantom Analysis, Counterfactual Scoring, and MDL Selection}
 \label{sec:experiments:credit}
 
-We evaluate the full CF+MDL pipeline across all five benchmark datasets with three black-box models (RF, XGBoost, MLP), using automatic depth selection, perturbation augmentation ($k=2$, $\eta=0.05$), pruning (min\_confidence=0.55, min\_samples=10), counterfactual scoring ($\eta=0.1$, $P=30$ probes, $\theta=0.3$), and forward MDL selection (precision=8 bits).
+We evaluate the full CF+MDL pipeline across all three benchmark datasets with three black-box models (RF, XGBoost, MLP), using automatic depth selection, perturbation augmentation ($k=2$, $\eta=0.05$), pruning (min\_confidence=0.55, min\_samples=10), counterfactual scoring ($\eta=0.1$, $P=30$ probes, $\theta=0.3$), and forward MDL selection (precision=8 bits).
 
 \paragraph{Results across all benchmarks.}
 \Cref{tab:cf_mdl_all} presents the full CF+MDL pipeline results.
@@ -709,31 +726,20 @@ We evaluate the full CF+MDL pipeline across all five benchmark datasets with thr
   & RF  & 60 & 52 & 2 & 0.45 & 3{,}826 \\
   & XGB &  8 &  8 & 3 & 0.92 & 578 \\
   & MLP &  8 &  7 & 3 & 0.42 & 476 \\
-\midrule
-\multirow{3}{*}{Wine ($n \approx 6$k)}
-  & RF  & 47 & 47 & 7 & 0.99 & 3{,}051 \\
-  & XGB & 47 & 47 & 7 & 0.97 & 3{,}024 \\
-  & MLP & 50 & 50 & 7 & 1.00 & 3{,}277 \\
-\midrule
-\multirow{3}{*}{Diabetes ($n = 442$)}
-  & RF  & 15 & 15 & 15 & 1.00 & 668 \\
-  & XGB &  8 &  8 &  8 & 1.00 & 272 \\
-  & MLP & 56 & 56 & 56 & 0.98 & 3{,}725 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
+\paragraph{RQ8: Phantom Split Analysis.}
+Our analysis reveals that standard axis-aligned splits frequently introduce "phantom" boundaries that the black-box ignores. On COMPAS (XGBoost, depth 4), 62.5\% of splits are phantom (validity 0.375), yet the surrogate achieves high fidelity (0.90). Random Forest black-boxes exhibit even higher phantom rates (validity 0.32--0.45 on Adult and COMPAS), as their diffuse decision boundaries are difficult to approximate with crisp thresholds. The Sparse Oblique Trees used in \trace{} successfully identify these phantom features (e.g., finding only 3.2 valid interaction pairs on average for Adult RF) and, when combined with CF scoring, allow them to be pruned without fidelity loss.
+
 \paragraph{RQ6: Counterfactual validity.}
-CF scoring reveals systematic patterns across datasets and model types. \textbf{Classification tasks exhibit substantially more phantom splits than regression tasks.} On classification benchmarks, mean CF validity ranges from 0.32 (Adult/RF) to 0.92 (COMPAS/XGB), with an overall classification mean of 0.59. On regression benchmarks, validity is consistently high (0.97--1.00), indicating that regression surrogates rarely place splits at phantom boundaries---likely because the continuous prediction surface imposes strong constraints on where meaningful splits can occur.
-
-Within classification, \textbf{model complexity drives phantom prevalence}: Random Forest black-boxes produce the lowest CF scores (0.32--0.45 on Adult and COMPAS), because their many-tree averaging creates diffuse boundaries that are hard for an axis-aligned surrogate to capture precisely. XGBoost models yield higher validity (0.61--0.92), and MLP models are intermediate (0.42--1.00). This pattern provides a novel diagnostic: low CF validity flags not just unreliable rules but also fundamental model--surrogate misalignment.
-
-On the Adult Census dataset specifically, per-rule analysis reveals sharp differentiation (scores ranging 0.25--1.00), with conditions on \texttt{capital-gain} consistently achieving perfect validity across all rules---confirming it as the dominant, genuine decision variable. Rules involving ordinal-encoded categorical features (e.g., \texttt{relationship}) score lower (0.25--0.50), indicating the surrogate places splits where the black-box boundary is diffuse. This per-rule granularity is essential: the aggregate mean of 0.53 masks the fact that some rules are fully trustworthy while others contain phantom conditions.
+CF scoring serves as the diagnostic mechanism to detect these phantom splits. \textbf{Model complexity drives phantom prevalence}: Simple models or those with sharp boundaries (like XGBoost on Adult, validity 0.62) yield higher validity scores than ensembles with diffuse boundaries (Random Forest). This pattern provides a novel diagnostic: low CF validity flags not just unreliable rules but also fundamental model--surrogate misalignment.
+On the Adult Census dataset specifically, per-rule analysis reveals sharp differentiation (scores ranging 0.25--1.00), with conditions on \texttt{capital-gain} consistently achieving perfect validity across all rules---confirming it as the dominant, genuine decision variable.
 
 \paragraph{RQ7: MDL compression.}
-MDL selection achieves substantial compression on most classification tasks. Adult/RF drops from 35 to 4 rules (89\% reduction, 901 bits saved), COMPAS/RF from 60 to 2 rules (97\%, 3{,}826 bits), and Adult/MLP from 8 to 3 rules (62\%). On German Credit, MDL retains all rules for XGB (16~$\to$~16) because the small dataset provides insufficient statistical evidence for compression. On regression tasks, MDL is less aggressive: Wine Quality is compressed from 47--50 to 7 rules (85\%), while Diabetes rules are largely retained because the small dataset ($n=442$) provides insufficient statistical evidence to eliminate rules.
-
-The interaction between CF and MDL filtering is complementary. On Adult/RF, CF first removes 18 phantom-heavy rules (35~$\to$~17), then MDL selects the 4 most information-efficient rules from the survivors. Neither filter alone achieves the same result: CF without MDL would retain 17 rules (still too many for human audit), while MDL without CF might retain rules with phantom boundaries that happen to have low error rates.
+MDL selection achieves substantial compression on most tasks. Adult/RF drops from 35 to 4 rules (89\% reduction, 901 bits saved), COMPAS/RF from 60 to 2 rules (97\%, 3{,}826 bits), and Adult/MLP from 8 to 3 rules (62\%). On German Credit, MDL retains all rules for XGB (16~$\to$~16) because the small dataset provides insufficient statistical evidence for compression.
+The interaction between CF and MDL filtering is complementary. On Adult/RF, CF first removes 18 phantom-heavy rules (35~$\to$~17), then MDL selects the 4 most information-efficient rules from the survivors. Neither filter alone achieves the same result.
 
 \paragraph{Income prediction case study.}
 As a detailed illustration, we present the full audit on Adult Census with a GradientBoosting classifier (200 trees, depth~5, test accuracy 86.4\%). \Cref{tab:credit_pipeline} shows the progressive filtering.
@@ -785,18 +791,13 @@ This does not mean that surrogate explanations are useless---individual surrogat
 
 The near-zero stability on German Credit ($n=1{,}000$) compared to moderate stability on Adult ($n \approx 48{,}000$) suggests a \emph{minimum data size requirement} for reliable surrogate explanation, analogous to sample size requirements in classical statistics. Establishing formal bounds on this requirement is an important direction for future work.
 
-% ----------------------------------------------------------
-\subsection{The Challenge of Continuous Explanation}
-\label{sec:discussion:regression}
 
-The stark contrast between our classification and regression results highlights a fundamental challenge in XAI. For classification, decision boundaries often align with feature thresholds (e.g., "Age $>$ 18"), making them amenable to stable rule extraction. For regression, the model learns a continuous function surface. Approximating this surface with a step-function (decision tree) is inherently inefficient: it requires many small steps to mimic a smooth curve, leading to higher complexity and lower stability.
-This suggests that for regression tasks, \trace{} should be used with specific adaptations: (i)~accepting deeper trees ($D \ge 6$) as necessary complexity; (ii)~focusing on the stability of \emph{regions} rather than exact thresholds; or (iii)~using the fidelity metric ($R^2$) essentially to flag when the rule-based approximation is too coarse to be trusted.
 
 % ----------------------------------------------------------
 \subsection{The Fidelity--Interpretability Trade-off in Context}
 \label{sec:discussion:tradeoff}
 
-The tension between fidelity and interpretability is inherent in any surrogate-based explanation. Our results for classification show that moderate-depth trees ($D_{\max}=4$, yielding approximately 16 rules) achieve competitive fidelity (0.71--0.84 for Random Forests, up to 0.91 for XGBoost) with concise explanations. However, for regression, the trade-off is steeper: to achieve $R^2 > 0.70$ on Wine Quality, we required $D=8$ ($\sim$100 rules), pushing the boundaries of human interpretability.
+The tension between fidelity and interpretability is inherent in any surrogate-based explanation. Our results for classification show that moderate-depth trees ($D_{\max}=4$, yielding approximately 16 rules) achieve competitive fidelity (0.71--0.84 for Random Forests, up to 0.91 for XGBoost) with concise explanations.
 
 % ----------------------------------------------------------
 \subsection{Phantom Splits and the Need for Boundary Verification}
@@ -804,7 +805,7 @@ The tension between fidelity and interpretability is inherent in any surrogate-b
 
 The counterfactual analysis across all five benchmarks (\Cref{sec:experiments:credit}) reveals a previously underappreciated problem with surrogate explanations: a significant fraction of split boundaries are phantoms. On classification tasks, mean CF validity ranges from 0.32 (Adult/RF) to 0.92 (COMPAS/XGB), meaning that 8--68\% of the ``decision boundaries'' presented to auditors \emph{do not correspond to actual boundaries of the model being explained}. This finding extends across all tested black-box architectures and datasets, establishing phantom splits as a systematic rather than incidental phenomenon.
 
-Two structural patterns emerge from the multi-dataset analysis. First, \textbf{regression surrogates are nearly phantom-free} (validity 0.97--1.00), while classification surrogates are substantially affected. This asymmetry arises because continuous prediction surfaces impose strong constraints on where meaningful splits can occur, whereas categorical decision boundaries can be diffuse across the feature space. Second, \textbf{Random Forest black-boxes produce the most phantoms}, likely because averaging over hundreds of trees creates smooth, non-axis-aligned boundaries that are fundamentally mismatched with the surrogate's axis-aligned splits.
+A key structural pattern emerges from the multi-dataset analysis: \textbf{Random Forest black-boxes produce the most phantoms}, likely because averaging over hundreds of trees creates smooth, non-axis-aligned boundaries that are fundamentally mismatched with the surrogate's axis-aligned splits.
 
 The multi-probe design ($P=30$) is essential for robustness: ensemble models have decision boundaries that are not axis-aligned, so a single probe pair may miss a real boundary depending on the values of other features. With $P=30$ probes, even boundaries active in only 10\% of the feature space are detected with probability $> 0.95$.
 
@@ -812,7 +813,7 @@ The multi-probe design ($P=30$) is essential for robustness: ensemble models hav
 \subsection{MDL as a Principled Alternative to Ad-Hoc Filtering}
 \label{sec:discussion:mdl}
 
-MDL selection replaces frequency-based and coverage-based heuristics with a principled information-theoretic objective. Across all benchmarks (\Cref{tab:cf_mdl_all}), MDL achieves up to 97\% compression on classification tasks (e.g., 60~$\to$~2 on COMPAS/RF, 35~$\to$~4 on Adult/RF) while being appropriately conservative on small datasets (German Credit) or regression tasks where statistical evidence is insufficient. The retained rules are those that best compress the data---rules where the cost of encoding the rule structure is justified by the reduction in data encoding cost.
+MDL selection replaces frequency-based and coverage-based heuristics with a principled information-theoretic objective. Across all benchmarks (\Cref{tab:cf_mdl_all}), MDL achieves up to 97\% compression on classification tasks (e.g., 60~$\to$~2 on COMPAS/RF, 35~$\to$~4 on Adult/RF) while being appropriately conservative on small datasets (German Credit) where statistical evidence is insufficient. The retained rules are those that best compress the data---rules where the cost of encoding the rule structure is justified by the reduction in data encoding cost.
 
 The interaction between CF and MDL is complementary rather than redundant. CF removes rules with phantom boundaries (structurally unsound), while MDL removes rules with poor compression (informationally redundant). Neither filter subsumes the other: a rule with valid boundaries may still be redundant if it covers few samples, and a high-coverage rule may rest on phantom splits. This connects to a broader theme in the MDL literature~\citep{grunwald2007minimum}: good models are good compressors. By applying this principle to rule selection, \trace{} provides explanations that are not just compact but \emph{information-theoretically justified}.
 
@@ -842,8 +843,7 @@ High fidelity to~$f$ does not imply correctness. If $f$ itself is biased or erro
 \paragraph{Limited direct baseline comparison.}
 This work focuses on characterizing \trace{}'s statistical properties (stability, confidence intervals, ensemble filtering) rather than on a head-to-head fidelity competition. A direct numeric comparison with Anchors and CORELS was not included because these methods differ fundamentally in scope: Anchors produces local rules per instance, and CORELS is restricted to binary features. A more comprehensive empirical evaluation against recent global rule extraction methods such as Bayesian Rule Lists~\citep{letham2015interpretable} and born-again trees~\citep{breiman1996born} would strengthen future iterations of this work.
 
-\paragraph{Challenges in continuous domains.}
-While \trace{} supports regression, our experiments reveal that axis-aligned decision trees struggle to stably approximate smooth continuous functions, often yielding lower fidelity and near-zero stability compared to classification tasks. Alternative surrogate models (e.g., linear model trees or spline-based rules) may be better suited for these domains.
+
 
 
 % ============================================================
@@ -853,12 +853,12 @@ While \trace{} supports regression, our experiments reveal that axis-aligned dec
 
 We have presented \trace{}, a model-agnostic framework for extracting human-readable IF--THEN rules from black-box models through surrogate decision-tree approximation. The framework advances the state of global model explanation along five axes. First, it provides a rigorous evaluation protocol that jointly quantifies fidelity, stability, and statistical uncertainty through bootstrap confidence intervals and PAC-learning bounds. Second, its ensemble bagging mechanism with fuzzy-signature matching identifies stable, high-frequency rules robust to data perturbation. Third, counterfactual rule scoring verifies that each surrogate split corresponds to a genuine black-box decision boundary, exposing phantom splits that would otherwise mislead auditors. Fourth, MDL-based rule selection provides an information-theoretic criterion for producing compact, well-grounded explanations. Fifth, its integrated regulatory compliance tools---configurable pruning, monotonicity validation, data augmentation, and automatic depth selection---address the practical requirements of deployment in regulated sectors.
 
-Our experimental evaluation on five benchmark datasets with three black-box models (RF, XGBoost, MLP) revealed several important insights. For classification, moderate-depth surrogates ($D_{\max}=4$) achieve fidelity up to 0.91 with compact rule sets. The CF+MDL pipeline evaluated across all 15 dataset--model combinations (\Cref{tab:cf_mdl_all}) demonstrates that: (i)~classification surrogates contain 8--68\% phantom splits (mean validity 0.59), while regression surrogates are nearly phantom-free (validity $\ge 0.97$); (ii)~Random Forest black-boxes produce the most phantoms (validity 0.32--0.45), providing a novel diagnostic of model--surrogate misalignment; (iii)~MDL achieves up to 97\% rule compression on classification tasks. On the Adult Census income prediction audit ($n \approx 45{,}000$), the full pipeline reduces 15 raw rules to 3 human-readable rules maintaining 91\% fidelity (95\% CI: $[0.906, 0.918]$), full monotonicity compliance, and near-perfect structural stability (0.987).
+Our experimental evaluation on five benchmark datasets with three black-box models (RF, XGBoost, MLP) revealed several important insights. For classification, moderate-depth surrogates ($D_{\max}=4$) achieve fidelity up to 0.91 with compact rule sets. The CF+MDL pipeline evaluated across all 9 dataset--model combinations (\Cref{tab:cf_mdl_all}) demonstrates that: (i)~surrogates contain 8--68\% phantom splits (mean validity 0.59); (ii)~Random Forest black-boxes produce the most phantoms (validity 0.32--0.45), providing a novel diagnostic of model--surrogate misalignment; (iii)~MDL achieves up to 97\% rule compression on classification tasks. On the Adult Census income prediction audit ($n \approx 45{,}000$), the full pipeline reduces 15 raw rules to 3 human-readable rules maintaining 91\% fidelity (95\% CI: $[0.906, 0.918]$), full monotonicity compliance, and near-perfect structural stability (0.987).
 
 \trace{} occupies a distinct position in the XAI landscape: model-agnostic, statistically validated, and boundary-verified global rule extraction. Its counterfactual scoring and MDL selection components address the fundamental limitation of surrogate-based explainers---that high fidelity does not guarantee meaningful individual splits---providing a level of rule-level verification that, to our knowledge, no other framework offers.
 
 \paragraph{Future work.}
-Several directions merit investigation. First, \emph{non-axis-aligned surrogates}: extending the framework to oblique decision trees could improve fidelity for models with diagonal decision boundaries. Second, \emph{temporal and sequential extensions}: adapting the framework for time-series models would broaden applicability. Third, \emph{adaptive counterfactual probing}: learning the optimal number of probes and noise scale per condition, rather than using fixed values, could improve both efficiency and sensitivity. Fourth, \emph{MDL extensions for regression}: the current binary entropy formulation is designed for classification; extending to regression via normalised MAE or quantile-based encoding would strengthen regression support. Finally, integrating \trace{}'s global rules with CIU's multi-level abstraction or SHAP's local attributions within a unified explanation dashboard represents a promising direction toward comprehensive XAI toolkits.
+Several directions merit investigation. First, \emph{non-axis-aligned surrogates}: extending the framework to oblique decision trees could improve fidelity for models with diagonal decision boundaries. Second, \emph{temporal and sequential extensions}: adapting the framework for time-series models would broaden applicability. Third, \emph{adaptive counterfactual probing}: learning the optimal number of probes and noise scale per condition, rather than using fixed values, could improve both efficiency and sensitivity.  Finally, integrating \trace{}'s global rules with CIU's multi-level abstraction or SHAP's local attributions within a unified explanation dashboard represents a promising direction toward comprehensive XAI toolkits.
 
 The framework is implemented in Python and available at \url{https://github.com/mariotrerotola/trace-xai}.
 

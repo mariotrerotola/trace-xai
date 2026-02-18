@@ -23,11 +23,22 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Union
 
 import numpy as np
 
 from .ruleset import Rule, RuleSet
+
+
+def _auto_precision_bits(X: np.ndarray) -> int:
+    """Compute precision_bits from data by counting unique values per feature.
+
+    Uses the median number of unique values across features to determine
+    the number of bits needed to encode thresholds.  Clamped to [4, 32].
+    """
+    unique_counts = [len(np.unique(X[:, j])) for j in range(X.shape[1])]
+    median_unique = float(np.median(unique_counts))
+    return max(4, min(32, math.ceil(math.log2(max(median_unique, 2)))))
 
 
 # ---------------------------------------------------------------------------
@@ -174,10 +185,12 @@ def score_ruleset_mdl(
     X: np.ndarray,
     *,
     n_classes: int = 2,
-    precision_bits: int = 16,
+    precision_bits: Union[int, str] = "auto",
 ) -> tuple[RuleMDLScore, ...]:
     """Compute per-rule MDL scores for the entire RuleSet."""
     X = np.asarray(X)
+    if precision_bits == "auto":
+        precision_bits = _auto_precision_bits(X)
     n_features = len(ruleset.feature_names)
     scores: list[RuleMDLScore] = []
 
@@ -262,7 +275,7 @@ def select_rules_mdl(
     X: np.ndarray,
     *,
     n_classes: int = 2,
-    precision_bits: int = 16,
+    precision_bits: Union[int, str] = "auto",
     method: str = "forward",
 ) -> MDLSelectionReport:
     """Select an optimal subset of rules by minimising total MDL.
@@ -277,8 +290,10 @@ def select_rules_mdl(
         Data used to compute coverage and error rates.
     n_classes : int, default 2
         Number of output classes.
-    precision_bits : int, default 16
-        Bits per threshold for L(model) computation.
+    precision_bits : int or "auto", default "auto"
+        Bits per threshold for L(model) computation.  When ``"auto"``,
+        the value is derived from the median number of unique values
+        per feature in *X*.
     method : str, default "forward"
         ``"forward"`` (greedy forward selection),
         ``"backward"`` (greedy backward elimination), or
@@ -295,6 +310,8 @@ def select_rules_mdl(
         )
 
     X = np.asarray(X)
+    if precision_bits == "auto":
+        precision_bits = _auto_precision_bits(X)
     rule_scores = score_ruleset_mdl(
         ruleset, model, X,
         n_classes=n_classes, precision_bits=precision_bits,

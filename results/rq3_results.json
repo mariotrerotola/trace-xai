@@ -1,0 +1,709 @@
+[
+  {
+    "dataset": "german_credit",
+    "model": "mlp",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.3,
+    "num_stable_rules": 1,
+    "fidelity": 0.0
+  },
+  {
+    "dataset": "german_credit",
+    "model": "mlp",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.4,
+    "num_stable_rules": 1,
+    "fidelity": 0.0
+  },
+  {
+    "dataset": "german_credit",
+    "model": "mlp",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.5,
+    "num_stable_rules": 1,
+    "fidelity": 0.0
+  },
+  {
+    "dataset": "german_credit",
+    "model": "mlp",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.6,
+    "num_stable_rules": 1,
+    "fidelity": 0.0
+  },
+  {
+    "dataset": "german_credit",
+    "model": "mlp",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.7,
+    "num_stable_rules": 1,
+    "fidelity": 0.0
+  },
+  {
+    "dataset": "german_credit",
+    "model": "mlp",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.8,
+    "num_stable_rules": 1,
+    "fidelity": 0.0
+  },
+  {
+    "dataset": "german_credit",
+    "model": "mlp",
+    "seed": 42,
+    "method": "adaptive_phi",
+    "phi": 1.0,
+    "num_stable_rules": 1,
+    "fidelity": 0.0
+  },
+  {
+    "dataset": "german_credit",
+    "model": "mlp",
+    "seed": 42,
+    "method": "ranked",
+    "phi": null,
+    "num_stable_rules": 1,
+    "fidelity": null,
+    "top5_frequencies": [
+      1.0
+    ]
+  },
+  {
+    "dataset": "german_credit",
+    "model": "xgb",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.3,
+    "num_stable_rules": 0,
+    "fidelity": 0.7
+  },
+  {
+    "dataset": "german_credit",
+    "model": "xgb",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.4,
+    "num_stable_rules": 0,
+    "fidelity": 0.7
+  },
+  {
+    "dataset": "german_credit",
+    "model": "xgb",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.5,
+    "num_stable_rules": 0,
+    "fidelity": 0.7
+  },
+  {
+    "dataset": "german_credit",
+    "model": "xgb",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.6,
+    "num_stable_rules": 0,
+    "fidelity": 0.7
+  },
+  {
+    "dataset": "german_credit",
+    "model": "xgb",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.7,
+    "num_stable_rules": 0,
+    "fidelity": 0.7
+  },
+  {
+    "dataset": "german_credit",
+    "model": "xgb",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.8,
+    "num_stable_rules": 0,
+    "fidelity": 0.7
+  },
+  {
+    "dataset": "german_credit",
+    "model": "xgb",
+    "seed": 42,
+    "method": "adaptive_phi",
+    "phi": 0.02,
+    "num_stable_rules": 728,
+    "fidelity": 0.776
+  },
+  {
+    "dataset": "german_credit",
+    "model": "xgb",
+    "seed": 42,
+    "method": "ranked",
+    "phi": null,
+    "num_stable_rules": 728,
+    "fidelity": null,
+    "top5_frequencies": [
+      0.08,
+      0.06,
+      0.04,
+      0.04,
+      0.04
+    ]
+  },
+  {
+    "dataset": "compas",
+    "model": "xgb",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.3,
+    "num_stable_rules": 18,
+    "fidelity": 0.9052171095268956
+  },
+  {
+    "dataset": "compas",
+    "model": "xgb",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.4,
+    "num_stable_rules": 12,
+    "fidelity": 0.8640635126377187
+  },
+  {
+    "dataset": "compas",
+    "model": "xgb",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.5,
+    "num_stable_rules": 8,
+    "fidelity": 0.6949125081011017
+  },
+  {
+    "dataset": "compas",
+    "model": "xgb",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.6,
+    "num_stable_rules": 3,
+    "fidelity": 0.6323720025923526
+  },
+  {
+    "dataset": "compas",
+    "model": "xgb",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.7,
+    "num_stable_rules": 2,
+    "fidelity": 0.6323720025923526
+  },
+  {
+    "dataset": "compas",
+    "model": "xgb",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.8,
+    "num_stable_rules": 0,
+    "fidelity": 0.6221646143875567
+  },
+  {
+    "dataset": "compas",
+    "model": "xgb",
+    "seed": 42,
+    "method": "adaptive_phi",
+    "phi": 0.1,
+    "num_stable_rules": 45,
+    "fidelity": 0.9047310434219054
+  },
+  {
+    "dataset": "compas",
+    "model": "xgb",
+    "seed": 42,
+    "method": "ranked",
+    "phi": null,
+    "num_stable_rules": 153,
+    "fidelity": null,
+    "top5_frequencies": [
+      0.7,
+      0.7,
+      0.6,
+      0.58,
+      0.58
+    ]
+  },
+  {
+    "dataset": "compas",
+    "model": "mlp",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.3,
+    "num_stable_rules": 7,
+    "fidelity": 0.7321775761503565
+  },
+  {
+    "dataset": "compas",
+    "model": "mlp",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.4,
+    "num_stable_rules": 4,
+    "fidelity": 0.7250486066104991
+  },
+  {
+    "dataset": "compas",
+    "model": "mlp",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.5,
+    "num_stable_rules": 1,
+    "fidelity": 0.6806545690213869
+  },
+  {
+    "dataset": "compas",
+    "model": "mlp",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.6,
+    "num_stable_rules": 0,
+    "fidelity": 0.6806545690213869
+  },
+  {
+    "dataset": "compas",
+    "model": "mlp",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.7,
+    "num_stable_rules": 0,
+    "fidelity": 0.6806545690213869
+  },
+  {
+    "dataset": "compas",
+    "model": "mlp",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.8,
+    "num_stable_rules": 0,
+    "fidelity": 0.6806545690213869
+  },
+  {
+    "dataset": "compas",
+    "model": "mlp",
+    "seed": 42,
+    "method": "adaptive_phi",
+    "phi": 0.04,
+    "num_stable_rules": 104,
+    "fidelity": 0.937297472456254
+  },
+  {
+    "dataset": "compas",
+    "model": "mlp",
+    "seed": 42,
+    "method": "ranked",
+    "phi": null,
+    "num_stable_rules": 374,
+    "fidelity": null,
+    "top5_frequencies": [
+      0.5,
+      0.48,
+      0.48,
+      0.4,
+      0.38
+    ]
+  },
+  {
+    "dataset": "adult",
+    "model": "xgb",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.3,
+    "num_stable_rules": 16,
+    "fidelity": 0.8968864711865906
+  },
+  {
+    "dataset": "adult",
+    "model": "xgb",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.4,
+    "num_stable_rules": 8,
+    "fidelity": 0.8033258148688691
+  },
+  {
+    "dataset": "adult",
+    "model": "xgb",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.5,
+    "num_stable_rules": 6,
+    "fidelity": 0.7926451727035514
+  },
+  {
+    "dataset": "adult",
+    "model": "xgb",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.6,
+    "num_stable_rules": 4,
+    "fidelity": 0.7866746273937464
+  },
+  {
+    "dataset": "adult",
+    "model": "xgb",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.7,
+    "num_stable_rules": 4,
+    "fidelity": 0.7866746273937464
+  },
+  {
+    "dataset": "adult",
+    "model": "xgb",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.8,
+    "num_stable_rules": 4,
+    "fidelity": 0.7866746273937464
+  },
+  {
+    "dataset": "adult",
+    "model": "xgb",
+    "seed": 42,
+    "method": "adaptive_phi",
+    "phi": 0.12,
+    "num_stable_rules": 38,
+    "fidelity": 0.9140904869311397
+  },
+  {
+    "dataset": "adult",
+    "model": "xgb",
+    "seed": 42,
+    "method": "ranked",
+    "phi": null,
+    "num_stable_rules": 148,
+    "fidelity": null,
+    "top5_frequencies": [
+      0.8,
+      0.8,
+      0.8,
+      0.8,
+      0.54
+    ]
+  },
+  {
+    "dataset": "german_credit",
+    "model": "rf",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.3,
+    "num_stable_rules": 0,
+    "fidelity": 0.7
+  },
+  {
+    "dataset": "german_credit",
+    "model": "rf",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.4,
+    "num_stable_rules": 0,
+    "fidelity": 0.7
+  },
+  {
+    "dataset": "german_credit",
+    "model": "rf",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.5,
+    "num_stable_rules": 0,
+    "fidelity": 0.7
+  },
+  {
+    "dataset": "german_credit",
+    "model": "rf",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.6,
+    "num_stable_rules": 0,
+    "fidelity": 0.7
+  },
+  {
+    "dataset": "german_credit",
+    "model": "rf",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.7,
+    "num_stable_rules": 0,
+    "fidelity": 0.7
+  },
+  {
+    "dataset": "german_credit",
+    "model": "rf",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.8,
+    "num_stable_rules": 0,
+    "fidelity": 0.7
+  },
+  {
+    "dataset": "german_credit",
+    "model": "rf",
+    "seed": 42,
+    "method": "adaptive_phi",
+    "phi": 0.02,
+    "num_stable_rules": 728,
+    "fidelity": 0.776
+  },
+  {
+    "dataset": "german_credit",
+    "model": "rf",
+    "seed": 42,
+    "method": "ranked",
+    "phi": null,
+    "num_stable_rules": 728,
+    "fidelity": null,
+    "top5_frequencies": [
+      0.08,
+      0.06,
+      0.04,
+      0.04,
+      0.04
+    ]
+  },
+  {
+    "dataset": "compas",
+    "model": "rf",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.3,
+    "num_stable_rules": 6,
+    "fidelity": 0.636746597537265
+  },
+  {
+    "dataset": "compas",
+    "model": "rf",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.4,
+    "num_stable_rules": 2,
+    "fidelity": 0.5975372650680493
+  },
+  {
+    "dataset": "compas",
+    "model": "rf",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.5,
+    "num_stable_rules": 0,
+    "fidelity": 0.5861957226182761
+  },
+  {
+    "dataset": "compas",
+    "model": "rf",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.6,
+    "num_stable_rules": 0,
+    "fidelity": 0.5861957226182761
+  },
+  {
+    "dataset": "compas",
+    "model": "rf",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.7,
+    "num_stable_rules": 0,
+    "fidelity": 0.5861957226182761
+  },
+  {
+    "dataset": "compas",
+    "model": "rf",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.8,
+    "num_stable_rules": 0,
+    "fidelity": 0.5861957226182761
+  },
+  {
+    "dataset": "compas",
+    "model": "rf",
+    "seed": 42,
+    "method": "adaptive_phi",
+    "phi": 0.04,
+    "num_stable_rules": 121,
+    "fidelity": 0.7741412832145171
+  },
+  {
+    "dataset": "compas",
+    "model": "rf",
+    "seed": 42,
+    "method": "ranked",
+    "phi": null,
+    "num_stable_rules": 410,
+    "fidelity": null,
+    "top5_frequencies": [
+      0.46,
+      0.44,
+      0.3,
+      0.3,
+      0.3
+    ]
+  },
+  {
+    "dataset": "adult",
+    "model": "mlp",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.3,
+    "num_stable_rules": 0,
+    "fidelity": 0.9499137587899695
+  },
+  {
+    "dataset": "adult",
+    "model": "mlp",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.4,
+    "num_stable_rules": 0,
+    "fidelity": 0.9499137587899695
+  },
+  {
+    "dataset": "adult",
+    "model": "mlp",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.5,
+    "num_stable_rules": 0,
+    "fidelity": 0.9499137587899695
+  },
+  {
+    "dataset": "adult",
+    "model": "mlp",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.6,
+    "num_stable_rules": 0,
+    "fidelity": 0.9499137587899695
+  },
+  {
+    "dataset": "adult",
+    "model": "mlp",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.7,
+    "num_stable_rules": 0,
+    "fidelity": 0.9499137587899695
+  },
+  {
+    "dataset": "adult",
+    "model": "mlp",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.8,
+    "num_stable_rules": 0,
+    "fidelity": 0.9499137587899695
+  },
+  {
+    "dataset": "adult",
+    "model": "mlp",
+    "seed": 42,
+    "method": "adaptive_phi",
+    "phi": 0.02,
+    "num_stable_rules": 683,
+    "fidelity": 0.999226040422803
+  },
+  {
+    "dataset": "adult",
+    "model": "mlp",
+    "seed": 42,
+    "method": "ranked",
+    "phi": null,
+    "num_stable_rules": 683,
+    "fidelity": null,
+    "top5_frequencies": [
+      0.2,
+      0.2,
+      0.14,
+      0.14,
+      0.12
+    ]
+  },
+  {
+    "dataset": "adult",
+    "model": "rf",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.3,
+    "num_stable_rules": 10,
+    "fidelity": 0.8088319844323559
+  },
+  {
+    "dataset": "adult",
+    "model": "rf",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.4,
+    "num_stable_rules": 6,
+    "fidelity": 0.7950555039582504
+  },
+  {
+    "dataset": "adult",
+    "model": "rf",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.5,
+    "num_stable_rules": 4,
+    "fidelity": 0.7897483525717571
+  },
+  {
+    "dataset": "adult",
+    "model": "rf",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.6,
+    "num_stable_rules": 0,
+    "fidelity": 0.75217814338154
+  },
+  {
+    "dataset": "adult",
+    "model": "rf",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.7,
+    "num_stable_rules": 0,
+    "fidelity": 0.75217814338154
+  },
+  {
+    "dataset": "adult",
+    "model": "rf",
+    "seed": 42,
+    "method": "fixed_phi",
+    "phi": 0.8,
+    "num_stable_rules": 0,
+    "fidelity": 0.75217814338154
+  },
+  {
+    "dataset": "adult",
+    "model": "rf",
+    "seed": 42,
+    "method": "adaptive_phi",
+    "phi": 0.045,
+    "num_stable_rules": 63,
+    "fidelity": 0.8278713900314006
+  },
+  {
+    "dataset": "adult",
+    "model": "rf",
+    "seed": 42,
+    "method": "ranked",
+    "phi": null,
+    "num_stable_rules": 252,
+    "fidelity": null,
+    "top5_frequencies": [
+      0.52,
+      0.52,
+      0.52,
+      0.52,
+      0.42
+    ]
+  }
+]

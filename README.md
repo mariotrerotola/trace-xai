@@ -360,7 +360,7 @@ extract_rules(X, *, y=None, max_depth=5, min_samples_leaf=5,
               counterfactual_validity_threshold=None,
               counterfactual_noise_scale=0.01,
               mdl_selection=None,
-              mdl_precision_bits=16) -> ExplanationResult
+              mdl_precision_bits="auto") -> ExplanationResult
 ```
 
 | Parameter | Default | Description |
@@ -382,7 +382,7 @@ extract_rules(X, *, y=None, max_depth=5, min_samples_leaf=5,
 | `counterfactual_validity_threshold` | None | Filter rules with counterfactual score below this (0-1). |
 | `counterfactual_noise_scale` | 0.01 | Perturbation scale for counterfactual boundary probing. |
 | `mdl_selection` | None | `"forward"`, `"backward"`, or `"score_only"`. |
-| `mdl_precision_bits` | 16 | Bits per threshold for MDL model cost. |
+| `mdl_precision_bits` | `"auto"` | Bits per threshold for MDL model cost. `"auto"` calibrates from data. |
 
 #### `Explainer.extract_stable_rules()`
 
@@ -434,7 +434,7 @@ score_rules_counterfactual(result, X, *, validity_threshold=None,
 
 ```python
 select_rules_mdl(result, X, *, method="forward",
-                 precision_bits=16) -> MDLSelectionReport
+                 precision_bits="auto") -> MDLSelectionReport
 ```
 
 #### `Explainer.auto_select_depth()`

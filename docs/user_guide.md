@@ -806,7 +806,7 @@ from trace_xai import select_rules_mdl
 mdl_report = select_rules_mdl(
     result.rules, model, X,
     n_classes=3,
-    precision_bits=16,
+    precision_bits="auto",  # or an explicit int, e.g. 16
     method="forward",       # "forward", "backward", or "score_only"
 )
 
@@ -828,7 +828,7 @@ result = explainer.extract_rules(
     X, y=y,
     max_depth=5,
     mdl_selection="forward",
-    mdl_precision_bits=16,
+    mdl_precision_bits="auto",
 )
 
 # Report is attached to the result
@@ -842,6 +842,18 @@ print(result.mdl_report)
 | `"forward"` | Greedily add rules whose MDL cost is less than the null hypothesis cost |
 | `"backward"` | Start with all rules, iteratively remove the worst |
 | `"score_only"` | Compute MDL scores without filtering |
+
+### Boundary agreement on gradient-based models
+
+When using axis-aligned surrogate trees to approximate gradient-based models
+(GradientBoosting, XGBoost, LightGBM), the `boundary_agreement` metric from
+`compute_complementary_metrics()` may be low (< 0.3).  This is expected:
+gradient models produce smooth, oblique decision boundaries that axis-aligned
+trees cannot replicate precisely.  To improve boundary agreement, consider:
+
+- Using `surrogate_type="oblique_tree"` or `"sparse_oblique_tree"`
+- Increasing `max_depth` (at the cost of more rules)
+- Using `augmentation="boundary"` to generate samples near decision boundaries
 
 ### Combining counterfactual + MDL
 

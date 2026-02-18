@@ -157,7 +157,7 @@ def extract_rules(
     counterfactual_validity_threshold=None,
     counterfactual_noise_scale=0.01,
     mdl_selection=None,
-    mdl_precision_bits=16,
+    mdl_precision_bits="auto",
 ) -> ExplanationResult
 ```
 
@@ -185,7 +185,7 @@ Extract interpretable IF-THEN rules from the black-box model.
 | `counterfactual_noise_scale` | `float` | `0.01` | Perturbation scale for counterfactual boundary probing. |
 | `counterfactual_n_probes` | `int` | `20` | Number of random probe pairs per condition for counterfactual scoring. |
 | `mdl_selection` | `str` | `None` | MDL selection method: `"forward"`, `"backward"`, or `"score_only"`. |
-| `mdl_precision_bits` | `int` | `16` | Bits per threshold for MDL model cost computation. |
+| `mdl_precision_bits` | `int` or `"auto"` | `"auto"` | Bits per threshold for MDL model cost computation. `"auto"` calibrates from data. |
 
 #### Returns
 
@@ -298,7 +298,7 @@ method robust to ensemble models whose boundaries are not axis-aligned.
 
 ```python
 def select_rules_mdl(
-    self, result, X, *, method="forward", precision_bits=16,
+    self, result, X, *, method="forward", precision_bits="auto",
 ) -> MDLSelectionReport
 ```
 
@@ -312,7 +312,7 @@ L(model) + L(data|model) over the extracted rules.
 | `result` | `ExplanationResult` | *(required)* | A previously computed explanation result. |
 | `X` | array-like `(n, p)` | *(required)* | Data used to compute coverage and error rates. |
 | `method` | `str` | `"forward"` | `"forward"`, `"backward"`, or `"score_only"`. |
-| `precision_bits` | `int` | `16` | Bits per threshold for model cost computation. |
+| `precision_bits` | `int` or `"auto"` | `"auto"` | Bits per threshold for model cost computation. `"auto"` calibrates from data. |
 
 #### Returns
 
@@ -930,7 +930,7 @@ random probe pairs per condition for robustness with ensemble models.
 ### `select_rules_mdl()`
 
 ```python
-select_rules_mdl(ruleset, model, X, *, n_classes=2, precision_bits=16,
+select_rules_mdl(ruleset, model, X, *, n_classes=2, precision_bits="auto",
                  method="forward") -> MDLSelectionReport
 ```
 

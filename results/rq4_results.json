@@ -1,0 +1,80 @@
+[
+  {
+    "dataset": "german_credit",
+    "model": "mlp",
+    "seed": 42,
+    "fidelity_unconstrained": 1.0,
+    "violations_unconstrained": 0,
+    "rules_unconstrained": 1,
+    "fidelity_constrained": 1.0,
+    "violations_constrained": 0,
+    "rules_after_enforcement": 1,
+    "rules_removed": 0,
+    "fidelity_impact": 0.0
+  },
+  {
+    "dataset": "german_credit",
+    "model": "rf",
+    "seed": 42,
+    "fidelity_unconstrained": 0.765,
+    "violations_unconstrained": 1,
+    "rules_unconstrained": 16,
+    "fidelity_constrained": 0.755,
+    "violations_constrained": 1,
+    "rules_after_enforcement": 15,
+    "rules_removed": 1,
+    "fidelity_impact": null
+  },
+  {
+    "dataset": "german_credit",
+    "model": "xgb",
+    "seed": 42,
+    "fidelity_unconstrained": 0.765,
+    "violations_unconstrained": 1,
+    "rules_unconstrained": 16,
+    "fidelity_constrained": 0.755,
+    "violations_constrained": 1,
+    "rules_after_enforcement": 15,
+    "rules_removed": 1,
+    "fidelity_impact": null
+  },
+  {
+    "dataset": "adult",
+    "model": "xgb",
+    "seed": 42,
+    "fidelity_unconstrained": 0.9133607536154968,
+    "violations_unconstrained": 3,
+    "rules_unconstrained": 16,
+    "fidelity_constrained": 0.8927734288620582,
+    "violations_constrained": 1,
+    "rules_after_enforcement": 13,
+    "rules_removed": 3,
+    "fidelity_impact": null
+  },
+  {
+    "dataset": "adult",
+    "model": "mlp",
+    "seed": 42,
+    "fidelity_unconstrained": 0.9991154747689178,
+    "violations_unconstrained": 0,
+    "rules_unconstrained": 16,
+    "fidelity_constrained": 0.9991154747689178,
+    "violations_constrained": 0,
+    "rules_after_enforcement": 16,
+    "rules_removed": 0,
+    "fidelity_impact": 0.0
+  },
+  {
+    "dataset": "adult",
+    "model": "rf",
+    "seed": 42,
+    "fidelity_unconstrained": 0.8404758745743223,
+    "violations_unconstrained": 1,
+    "rules_unconstrained": 15,
+    "fidelity_constrained": 0.8404758745743223,
+    "violations_constrained": 1,
+    "rules_after_enforcement": 14,
+    "rules_removed": 1,
+    "fidelity_impact": null
+  }
+]

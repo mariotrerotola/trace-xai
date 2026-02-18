@@ -1,0 +1,93 @@
+[
+  {
+    "vary": "N",
+    "n": 1000,
+    "depth": 4,
+    "ensemble_size": 1,
+    "time_s": 0.13913350000075297
+  },
+  {
+    "vary": "N",
+    "n": 5000,
+    "depth": 4,
+    "ensemble_size": 1,
+    "time_s": 0.37250166699959664
+  },
+  {
+    "vary": "N",
+    "n": 10000,
+    "depth": 4,
+    "ensemble_size": 1,
+    "time_s": 0.6484784589993069
+  },
+  {
+    "vary": "N",
+    "n": 25000,
+    "depth": 4,
+    "ensemble_size": 1,
+    "time_s": 1.4510459160010214
+  },
+  {
+    "vary": "N",
+    "n": 45222,
+    "depth": 4,
+    "ensemble_size": 1,
+    "time_s": 2.521676541000488
+  },
+  {
+    "vary": "Depth",
+    "n": 45222,
+    "depth": 2,
+    "ensemble_size": 1,
+    "time_s": 2.4383728749962756
+  },
+  {
+    "vary": "Depth",
+    "n": 45222,
+    "depth": 6,
+    "ensemble_size": 1,
+    "time_s": 2.4686894999977085
+  },
+  {
+    "vary": "Depth",
+    "n": 45222,
+    "depth": 4,
+    "ensemble_size": 1,
+    "time_s": 2.448489333000907
+  },
+  {
+    "vary": "Depth",
+    "n": 45222,
+    "depth": 8,
+    "ensemble_size": 1,
+    "time_s": 2.478146959001606
+  },
+  {
+    "vary": "Ensemble",
+    "n": 45222,
+    "depth": 4,
+    "ensemble_size": 10,
+    "time_s": 2.8243495830029133
+  },
+  {
+    "vary": "Ensemble",
+    "n": 45222,
+    "depth": 4,
+    "ensemble_size": 25,
+    "time_s": 3.3918536659984966
+  },
+  {
+    "vary": "Ensemble",
+    "n": 45222,
+    "depth": 4,
+    "ensemble_size": 50,
+    "time_s": 4.355396749997453
+  },
+  {
+    "vary": "Ensemble",
+    "n": 45222,
+    "depth": 4,
+    "ensemble_size": 100,
+    "time_s": 6.310349999999744
+  }
+]
